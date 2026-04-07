@@ -22,13 +22,18 @@ export default async function AdminDashboardPage() {
     supabase.from('users').select('id, name, role, monthly_demo_target, monthly_revenue_target').eq('is_active', true),
   ])
 
-  const activeUsers = (usersRes.data ?? []).filter(u => u.is_active)
+  type User = { id: string; name: string; role: string; monthly_demo_target: number; monthly_revenue_target: number; is_active: boolean }
+  type Lead = { id: string; status: string; phase: string }
+  type Demo = { id: string; sdr_id: string; status: string }
+  type Deal = { id: string; closer_id: string; stage: string; deal_value: number | null }
+
+  const activeUsers = ((usersRes.data ?? []) as User[]).filter(u => u.is_active)
   const sdrs = activeUsers.filter(u => u.role === 'sdr')
   const closers = activeUsers.filter(u => u.role === 'closer')
   const totalLeads = leadsRes.count ?? 0
-  const unassignedLeads = (leadsRes.data ?? []).filter(l => l.phase === 'sdr' && l.status === 'new').length
-  const demosThisMonth = (demosRes.data ?? []).length
-  const wonDeals = (dealsRes.data ?? []).filter(d => d.stage === 'won')
+  const unassignedLeads = ((leadsRes.data ?? []) as Lead[]).filter(l => l.phase === 'sdr' && l.status === 'new').length
+  const demosThisMonth = ((demosRes.data ?? []) as Demo[]).length
+  const wonDeals = ((dealsRes.data ?? []) as Deal[]).filter(d => d.stage === 'won')
   const revenueThisMonth = wonDeals.reduce((sum, d) => sum + (d.deal_value ?? 0), 0)
 
   // SDR performance table
