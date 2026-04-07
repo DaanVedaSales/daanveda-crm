@@ -1,0 +1,55 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 248 250 252;
+    --foreground: 15 23 42;
+    --card: 255 255 255;
+    --card-foreground: 15 23 42;
+    --primary: 26 86 219;
+    --primary-foreground: 255 255 255;
+    --muted: 100 116 139;
+    --muted-foreground: 100 116 139;
+    --border: 226 232 240;
+    --radius: 0.5rem;
+  }
+}
+
+@layer base {
+  * {
+    border-color: #E2E8F0;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* KPI card accent bar */
+.kpi-card-accent {
+  @apply absolute left-0 top-0 bottom-0 w-1.5 rounded-l-lg;
+}
+
+/* Status pill variants */
+.pill-ok {
+  @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border;
+}
+
+.pill-warn {
+  @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border border-amber-300 text-amber-700 bg-amber-50;
+}
+
+.pill-pip {
+  @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-500 text-white;
+}
+
+/* Sidebar nav active state */
+.nav-active {
+  @apply bg-primary/10 text-white relative;
+}
+
+.nav-active::before {
+  content: '';
+  @apply absolute left-0 top-0 bottom-0 w-1 bg-primary rounded-r;
+}
