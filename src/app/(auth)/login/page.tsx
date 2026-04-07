@@ -31,11 +31,13 @@ export default function LoginPage() {
     // Get user role and redirect
     const { data: { user } } = await supabase.auth.getUser()
     if (user) {
-      const { data: profile } = await supabase
+      const { data: profileData } = await supabase
         .from('users')
         .select('role')
         .eq('auth_id', user.id)
         .single()
+
+      const profile = profileData as { role: string } | null
 
       const roleMap: Record<string, string> = {
         admin: '/admin',
