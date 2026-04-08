@@ -12,7 +12,6 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/api/') ||
     pathname === '/login' ||
     pathname === '/signup' ||
-    pathname === '/onboarding' ||
     pathname === '/favicon.ico'
   ) {
     return NextResponse.next()
@@ -25,37 +24,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
-  // Root redirect
-  if (pathname === '/') {
-    // Get user role from users table
-    const supabase = createServerClient<Database>(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll: () => request.cookies.getAll(),
-          setAll: () => {},
-        },
-      }
-    )
-
-    const { data: profile } = await supabase
-      .from('users')
-      .select('role')
-      .eq('auth_id', user.id)
-      .single()
-
-    const role = profile?.role ?? 'sdr'
-    const workspaceMap: Record<string, string> = {
-      admin: '/admin',
-      sdr: '/sdr',
-      closer: '/closer',
-      sales_ops: '/admin',
-    }
-    return NextResponse.redirect(new URL(workspaceMap[role] ?? '/sdr', request.url))
-  }
-
-  // Enforce workspace boundaries
+  // Check if user has a profile in the users table
   const supabase = createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -73,7 +42,12 @@ export async function middleware(request: NextRequest) {
     .eq('auth_id', user.id)
     .single()
 
-  const role = profile?.role ?? 'sdr'
+  // Authenticated but no profile → send to onboarding
+  // (allows /onboarding through without loop)
+  if (!profile) {
+    if (pathname === '/onboarding') return NextResponse.next()
+    return NextResponse.redirect(new URL('/onboarding', request.url))
+  }
 
   const workspaceMap: Record<string, string> = {
     admin: '/admin',
@@ -82,10 +56,20 @@ export async function middleware(request: NextRequest) {
     sales_ops: '/admin',
   }
 
-  const userWorkspace = workspaceMap[role] ?? '/sdr'
-  const allowedPrefixes = [userWorkspace]
+  // Root redirect → send to role workspace
+  if (pathname === '/') {
+    return NextResponse.redirect(new URL(workspaceMap[profile.role] ?? '/sdr', request.url))
+  }
 
-  const isAllowed = allowedPrefixes.some((prefix) => pathname.startsWith(prefix))
+  // Onboarding already done → don't let them go back to onboarding
+  if (pathname === '/onboarding') {
+    return NextResponse.redirect(new URL(workspaceMap[profile.role] ?? '/sdr', request.url))
+  }
+
+  // Enforce workspace boundaries — each role can only access their section
+  const userWorkspace = workspaceMap[profile.role] ?? '/sdr'
+  const isAllowed = pathname.startsWith(userWorkspace)
+
   if (!isAllowed) {
     return NextResponse.redirect(new URL(userWorkspace, request.url))
   }

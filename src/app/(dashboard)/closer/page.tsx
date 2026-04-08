@@ -17,6 +17,29 @@ export default async function CloserDashboardPage() {
 
   if (!profile) redirect('/login')
 
+  // No targets set yet — show pending setup screen
+  if (profile.monthly_revenue_target === null || profile.monthly_revenue_target === 0) {
+    return (
+      <div className="flex-1 flex flex-col">
+        <TopBar title={`Welcome, ${profile.name.split(' ')[0]} 👋`} subtitle="Your workspace is almost ready" />
+        <div className="flex-1 flex items-center justify-center p-6">
+          <div className="max-w-md text-center">
+            <div className="w-16 h-16 bg-amber-50 rounded-full flex items-center justify-center mx-auto mb-4">
+              <span className="text-3xl">⏳</span>
+            </div>
+            <h2 className="text-lg font-semibold text-[#0F172A] mb-2">Waiting for targets</h2>
+            <p className="text-sm text-[#64748B] leading-relaxed">
+              Your account is set up! Your manager needs to assign your monthly revenue target before your dashboard activates.
+            </p>
+            <p className="text-xs text-[#94A3B8] mt-4">
+              Once targets are set, your pipeline, KPIs, and commission tracker will appear here.
+            </p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   const now = new Date()
   const month = now.getMonth() + 1
   const year = now.getFullYear()

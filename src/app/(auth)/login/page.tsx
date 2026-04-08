@@ -40,13 +40,19 @@ export default function LoginPage() {
 
       const profile = profileData as { role: string } | null
 
+      // No profile yet = new user who signed up but didn't complete onboarding
+      if (!profile) {
+        router.push('/onboarding')
+        return
+      }
+
       const roleMap: Record<string, string> = {
         admin: '/admin',
         sdr: '/sdr',
         closer: '/closer',
         sales_ops: '/admin',
       }
-      router.push(roleMap[profile?.role ?? 'sdr'] ?? '/sdr')
+      router.push(roleMap[profile.role] ?? '/sdr')
       router.refresh()
     }
   }

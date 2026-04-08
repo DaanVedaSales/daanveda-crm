@@ -1,16 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceClient } from '@/lib/supabase/server'
 
-// POST /api/onboarding — create user profile after signup, with role selection
-// Only SDR and Closer allowed via self-signup. Admin/Sales Ops must be invited by admin.
+// POST /api/onboarding — create user profile after signup
+// Uses service client to bypass RLS (chicken-and-egg: new user has no profile yet
+// so RLS would block them from inserting their own first row)
 export async function POST(req: NextRequest) {
-  const supabase = createClient()
-
-  // Must be authenticated (just signed up)
-  const { data: { user } } = await supabase.auth.getUser()
+  // Verify the user is authenticated
+  const authClient = createClient()
+  const { data: { user } } = await authClient.auth.getUser()
   if (!user) {
     return NextResponse.json({ error: 'Not authenticated. Please sign up first.' }, { status: 401 })
   }
+
+  // Use service client to bypass RLS for the initial profile creation
+  const supabase = createServiceClient()
 
   // Check if profile already exists (prevent duplicate onboarding)
   const { data: existing } = await supabase
@@ -20,7 +23,6 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (existing) {
-    // Already onboarded — just return their role
     return NextResponse.json({ role: existing.role, already_setup: true })
   }
 
@@ -28,7 +30,6 @@ export async function POST(req: NextRequest) {
   const { role } = body
 
   // SECURITY: only SDR and Closer can self-register
-  // Admin and Sales Ops must be created by an existing admin
   const SELF_SIGNUP_ROLES = ['sdr', 'closer']
   if (!role || !SELF_SIGNUP_ROLES.includes(role)) {
     return NextResponse.json(
@@ -37,10 +38,13 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  // Get name from auth metadata (set during signup)
-  const name = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Team Member'
+  // Get name from auth metadata
+  const name = user.user_metadata?.full_name
+    || user.user_metadata?.name
+    || user.email?.split('@')[0]
+    || 'Team Member'
 
-  // Create user profile
+  // Create user profile using service role (bypasses RLS)
   const { data, error } = await supabase
     .from('users')
     .insert({
@@ -49,6 +53,8 @@ export async function POST(req: NextRequest) {
       name,
       role,
       is_active: true,
+      monthly_demo_target: null,   // Admin will set this from team page
+      monthly_revenue_target: null, // Admin will set this from team page
     })
     .select('id, name, email, role')
     .single()

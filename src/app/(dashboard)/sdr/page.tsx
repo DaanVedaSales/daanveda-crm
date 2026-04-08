@@ -17,6 +17,9 @@ export default async function SDRDashboardPage() {
 
   if (!profile) redirect('/login')
 
+  // No targets set yet — show a pending setup screen
+  const targetsNotSet = profile.monthly_demo_target === null || profile.monthly_demo_target === 0
+
   const now = new Date()
   const month = now.getMonth() + 1
   const year = now.getFullYear()
@@ -40,7 +43,7 @@ export default async function SDRDashboardPage() {
   const activeLeads = leadsRes.count ?? 0
   const callsToday = callsRes.count ?? 0
   const overdueFollowups = followupsRes.count ?? 0
-  const target = profile.monthly_demo_target
+  const target = profile.monthly_demo_target ?? 0
 
   // Pace calculations
   const dailyTarget = target > 0 ? target / 26 : 0
@@ -50,6 +53,29 @@ export default async function SDRDashboardPage() {
   const paceColor = paceRatio >= 1.05 ? '#059669' : paceRatio >= 0.85 ? '#1A56DB' : paceRatio >= 0.6 ? '#F59E0B' : '#EF4444'
 
   const progressPercent = target > 0 ? Math.min(Math.round((demosBooked / target) * 100), 100) : 0
+
+  // Show pending setup message if no targets assigned yet
+  if (targetsNotSet) {
+    return (
+      <div className="flex-1 flex flex-col">
+        <TopBar title={`Welcome, ${profile.name.split(' ')[0]} 👋`} subtitle="Your workspace is almost ready" />
+        <div className="flex-1 flex items-center justify-center p-6">
+          <div className="max-w-md text-center">
+            <div className="w-16 h-16 bg-amber-50 rounded-full flex items-center justify-center mx-auto mb-4">
+              <span className="text-3xl">⏳</span>
+            </div>
+            <h2 className="text-lg font-semibold text-[#0F172A] mb-2">Waiting for targets</h2>
+            <p className="text-sm text-[#64748B] leading-relaxed">
+              Your account is set up! Your manager needs to assign your monthly demo target and revenue target before your dashboard is active.
+            </p>
+            <p className="text-xs text-[#94A3B8] mt-4">
+              Once targets are set, this page will show your pace tracker, KPIs, and leads.
+            </p>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex-1 flex flex-col">
