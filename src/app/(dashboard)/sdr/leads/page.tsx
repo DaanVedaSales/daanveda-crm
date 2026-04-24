@@ -385,12 +385,12 @@ function BookDemoModal({ lead, contacts, onClose, onSuccess }: { lead: LeadWithO
   const org = lead.organization
   const primaryContact = contacts.find(c => c.is_primary) ?? contacts[0]
 
-  // Fetch active closers when modal opens
+  // Fetch active closers when modal opens — uses /api/closers (open to all authenticated users)
   useEffect(() => {
-    fetch('/api/users?role=closer')
+    fetch('/api/closers')
       .then(r => r.json())
       .then(data => {
-        const activeClosers = (data ?? []).filter((u: any) => u.is_active && u.role === 'closer')
+        const activeClosers = data ?? []
         setClosers(activeClosers)
         if (activeClosers.length === 1) setCloserId(activeClosers[0].id)
       })

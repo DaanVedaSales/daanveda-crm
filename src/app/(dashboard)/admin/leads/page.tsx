@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import TopBar from '@/components/layout/TopBar'
 import { LEAD_STATUS_LABELS, LEAD_STATUS_COLORS } from '@/lib/constants'
 import type { LeadStatus } from '@/types/database'
-import { Trash2 } from 'lucide-react'
+import { Trash2, Users } from 'lucide-react'
 
 export default function AdminLeadPoolPage() {
   const [leads, setLeads] = useState<any[]>([])
@@ -14,6 +14,11 @@ export default function AdminLeadPoolPage() {
   const [filter, setFilter] = useState<'all' | 'unassigned'>('unassigned')
   const [confirmDelete, setConfirmDelete] = useState<{ orgId: string; orgName: string } | null>(null)
   const [deleting, setDeleting] = useState(false)
+
+  // Bulk select state
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [bulkSdrId, setBulkSdrId] = useState('')
+  const [bulkAssigning, setBulkAssigning] = useState(false)
 
   useEffect(() => {
     loadAll()
@@ -30,6 +35,13 @@ export default function AdminLeadPoolPage() {
     ? leads.filter(l => !l.assigned_to && l.phase === 'sdr')
     : leads
 
+  // Reset selection when filter changes
+  function setFilterAndClear(f: 'all' | 'unassigned') {
+    setFilter(f)
+    setSelected(new Set())
+  }
+
+  // Individual assign
   async function assignLead(leadId: string, toUserId: string) {
     setAssigning(leadId)
     await fetch(`/api/leads/${leadId}/assign`, {
@@ -42,12 +54,59 @@ export default function AdminLeadPoolPage() {
     setAssigning(null)
   }
 
+  // Bulk assign
+  async function handleBulkAssign() {
+    if (!bulkSdrId || selected.size === 0) return
+    setBulkAssigning(true)
+    await Promise.all(
+      Array.from(selected).map(leadId =>
+        fetch(`/api/leads/${leadId}/assign`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ to_user_id: bulkSdrId, reason: 'Bulk admin assignment' }),
+        })
+      )
+    )
+    setSelected(new Set())
+    setBulkSdrId('')
+    const res = await fetch('/api/leads')
+    setLeads(await res.json())
+    setBulkAssigning(false)
+  }
+
+  // Checkbox logic
+  function toggleSelect(leadId: string) {
+    setSelected(prev => {
+      const next = new Set(prev)
+      if (next.has(leadId)) next.delete(leadId)
+      else next.add(leadId)
+      return next
+    })
+  }
+
+  function toggleSelectAll() {
+    if (selected.size === filtered.length) {
+      setSelected(new Set())
+    } else {
+      setSelected(new Set(filtered.map((l: any) => l.id)))
+    }
+  }
+
+  const allSelected = filtered.length > 0 && selected.size === filtered.length
+  const someSelected = selected.size > 0 && selected.size < filtered.length
+
+  // Delete org
   async function deleteOrg() {
     if (!confirmDelete) return
     setDeleting(true)
     const res = await fetch(`/api/organizations/${confirmDelete.orgId}`, { method: 'DELETE' })
     if (res.ok) {
       setLeads(prev => prev.filter(l => l.organization?.id !== confirmDelete.orgId))
+      setSelected(prev => {
+        const next = new Set(prev)
+        leads.filter(l => l.organization?.id === confirmDelete.orgId).forEach(l => next.delete(l.id))
+        return next
+      })
     } else {
       const data = await res.json()
       alert(data.error ?? 'Delete failed. Please try again.')
@@ -56,10 +115,8 @@ export default function AdminLeadPoolPage() {
     setConfirmDelete(null)
   }
 
-  // Get SQL label — use sql_score_label if present, fallback gracefully
   function getSqlLabel(org: any): string {
-    if (org?.sql_score_label) return org.sql_score_label
-    return '—'
+    return org?.sql_score_label ?? '—'
   }
 
   if (loading) return <div className="flex-1 flex items-center justify-center"><div className="w-6 h-6 border-2 border-[#1A56DB] border-t-transparent rounded-full animate-spin" /></div>
@@ -70,74 +127,137 @@ export default function AdminLeadPoolPage() {
     <div className="flex-1 flex flex-col">
       <TopBar title="Lead Pool" subtitle={`${unassignedCount} unassigned · ${leads.length} total`} />
       <div className="flex-1 p-6 space-y-4 overflow-y-auto">
+
+        {/* Filter tabs */}
         <div className="flex gap-2">
           {(['unassigned', 'all'] as const).map(f => (
-            <button key={f} onClick={() => setFilter(f)}
+            <button key={f} onClick={() => setFilterAndClear(f)}
               className={`px-4 py-1.5 rounded-full text-xs font-medium transition-colors ${filter === f ? 'bg-[#1A56DB] text-white' : 'bg-white border border-[#E2E8F0] text-[#64748B] hover:bg-[#F8FAFC]'}`}>
               {f === 'unassigned' ? `Unassigned (${unassignedCount})` : `All (${leads.length})`}
             </button>
           ))}
         </div>
 
+        {/* Bulk assign bar — slides in when rows are selected */}
+        {selected.size > 0 && (
+          <div className="flex items-center gap-3 px-4 py-3 bg-[#1A56DB] text-white rounded-xl shadow-lg">
+            <Users className="w-4 h-4 shrink-0" />
+            <span className="text-sm font-medium">{selected.size} lead{selected.size > 1 ? 's' : ''} selected</span>
+            <div className="flex-1" />
+            <select
+              value={bulkSdrId}
+              onChange={e => setBulkSdrId(e.target.value)}
+              className="px-3 py-1.5 text-sm rounded-lg bg-white text-[#0F172A] border-0 focus:outline-none focus:ring-2 focus:ring-white/40 min-w-[160px]"
+            >
+              <option value="">Assign to SDR...</option>
+              {users.map((u: any) => <option key={u.id} value={u.id}>{u.name}</option>)}
+            </select>
+            <button
+              onClick={handleBulkAssign}
+              disabled={!bulkSdrId || bulkAssigning}
+              className="px-4 py-1.5 bg-white text-[#1A56DB] text-sm font-semibold rounded-lg hover:bg-blue-50 disabled:opacity-50 transition-colors"
+            >
+              {bulkAssigning ? 'Assigning...' : 'Assign All'}
+            </button>
+            <button
+              onClick={() => setSelected(new Set())}
+              className="text-white/70 hover:text-white text-sm px-2"
+            >
+              Clear
+            </button>
+          </div>
+        )}
+
         <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-[#F1F5F9]">
-                <th className="text-left px-5 py-3 text-[10px] font-semibold uppercase tracking-widest text-[#64748B]">Organization</th>
-                <th className="text-left px-5 py-3 text-[10px] font-semibold uppercase tracking-widest text-[#64748B]">Location</th>
-                <th className="text-left px-5 py-3 text-[10px] font-semibold uppercase tracking-widest text-[#64748B]">SQL Score</th>
-                <th className="text-left px-5 py-3 text-[10px] font-semibold uppercase tracking-widest text-[#64748B]">Status</th>
-                <th className="text-left px-5 py-3 text-[10px] font-semibold uppercase tracking-widest text-[#64748B]">Assigned To</th>
-                <th className="px-5 py-3 text-[10px] font-semibold uppercase tracking-widest text-[#64748B]"></th>
+                <th className="px-4 py-3 w-8">
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    ref={el => { if (el) el.indeterminate = someSelected }}
+                    onChange={toggleSelectAll}
+                    className="rounded border-[#CBD5E1] text-[#1A56DB] focus:ring-[#1A56DB]/30 cursor-pointer"
+                  />
+                </th>
+                <th className="text-left px-4 py-3 text-[10px] font-semibold uppercase tracking-widest text-[#64748B]">Organization</th>
+                <th className="text-left px-4 py-3 text-[10px] font-semibold uppercase tracking-widest text-[#64748B]">Location</th>
+                <th className="text-left px-4 py-3 text-[10px] font-semibold uppercase tracking-widest text-[#64748B]">SQL Score</th>
+                <th className="text-left px-4 py-3 text-[10px] font-semibold uppercase tracking-widest text-[#64748B]">Status</th>
+                <th className="text-left px-4 py-3 text-[10px] font-semibold uppercase tracking-widest text-[#64748B]">Assigned To</th>
+                <th className="px-4 py-3 text-[10px] font-semibold uppercase tracking-widest text-[#64748B]"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#F1F5F9]">
-              {filtered.map(l => (
-                <tr key={l.id} className="hover:bg-[#F8FAFC] group">
-                  <td className="px-5 py-3 font-medium text-[#0F172A]">{l.organization?.name ?? '—'}</td>
-                  <td className="px-5 py-3 text-[#64748B] text-xs">{l.organization?.location ?? '—'}</td>
-                  <td className="px-5 py-3">
-                    {getSqlLabel(l.organization) !== '—' ? (
-                      <span className="inline-flex items-center text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">
-                        {getSqlLabel(l.organization)}
+              {filtered.map((l: any) => {
+                const isSelected = selected.has(l.id)
+                return (
+                  <tr key={l.id} className={`hover:bg-[#F8FAFC] group transition-colors ${isSelected ? 'bg-blue-50/50' : ''}`}>
+                    <td className="px-4 py-3">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleSelect(l.id)}
+                        className="rounded border-[#CBD5E1] text-[#1A56DB] focus:ring-[#1A56DB]/30 cursor-pointer"
+                      />
+                    </td>
+                    <td className="px-4 py-3 font-medium text-[#0F172A]">{l.organization?.name ?? '—'}</td>
+                    <td className="px-4 py-3 text-[#64748B] text-xs">{l.organization?.location ?? '—'}</td>
+                    <td className="px-4 py-3">
+                      {getSqlLabel(l.organization) !== '—' ? (
+                        <span className="inline-flex items-center text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">
+                          {getSqlLabel(l.organization)}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-[#94A3B8]">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${LEAD_STATUS_COLORS[l.status as LeadStatus]}`}>
+                        {LEAD_STATUS_LABELS[l.status as LeadStatus]}
                       </span>
-                    ) : (
-                      <span className="text-xs text-[#94A3B8]">—</span>
-                    )}
-                  </td>
-                  <td className="px-5 py-3">
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${LEAD_STATUS_COLORS[l.status as LeadStatus]}`}>
-                      {LEAD_STATUS_LABELS[l.status as LeadStatus]}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3">
-                    {l.assigned_to ? (
-                      <span className="text-xs text-[#64748B]">{l.assignee?.name ?? 'Assigned'}</span>
-                    ) : (
-                      <select
-                        onChange={e => e.target.value && assignLead(l.id, e.target.value)}
-                        disabled={assigning === l.id}
-                        defaultValue=""
-                        className="px-2 py-1 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20 disabled:opacity-60"
+                    </td>
+                    <td className="px-4 py-3">
+                      {l.assigned_to ? (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs text-[#64748B]">{l.assignee?.name ?? 'Assigned'}</span>
+                          <select
+                            onChange={e => e.target.value && assignLead(l.id, e.target.value)}
+                            disabled={assigning === l.id}
+                            defaultValue=""
+                            className="px-1.5 py-0.5 text-[10px] border border-[#E2E8F0] rounded text-[#64748B] focus:outline-none focus:ring-1 focus:ring-[#1A56DB]/30 disabled:opacity-60"
+                          >
+                            <option value="">Reassign...</option>
+                            {users.map((u: any) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                          </select>
+                        </div>
+                      ) : (
+                        <select
+                          onChange={e => e.target.value && assignLead(l.id, e.target.value)}
+                          disabled={assigning === l.id}
+                          defaultValue=""
+                          className="px-2 py-1 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20 disabled:opacity-60"
+                        >
+                          <option value="">Assign to SDR...</option>
+                          {users.map((u: any) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                        </select>
+                      )}
+                    </td>
+                    <td className="px-3 py-3 text-right">
+                      <button
+                        onClick={() => setConfirmDelete({ orgId: l.organization?.id, orgName: l.organization?.name ?? 'this org' })}
+                        className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg text-[#94A3B8] hover:text-red-500 hover:bg-red-50 transition-all"
+                        title="Permanently delete from system"
                       >
-                        <option value="">Assign to SDR...</option>
-                        {users.map((u: any) => <option key={u.id} value={u.id}>{u.name}</option>)}
-                      </select>
-                    )}
-                  </td>
-                  <td className="px-3 py-3 text-right">
-                    <button
-                      onClick={() => setConfirmDelete({ orgId: l.organization?.id, orgName: l.organization?.name ?? 'this org' })}
-                      className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg text-[#94A3B8] hover:text-red-500 hover:bg-red-50 transition-all"
-                      title="Permanently delete from system"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </td>
+                  </tr>
+                )
+              })}
               {filtered.length === 0 && (
-                <tr><td colSpan={6} className="px-5 py-8 text-center text-[#94A3B8] text-sm">No leads in this view.</td></tr>
+                <tr><td colSpan={7} className="px-5 py-8 text-center text-[#94A3B8] text-sm">No leads in this view.</td></tr>
               )}
             </tbody>
           </table>

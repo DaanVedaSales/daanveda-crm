@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import TopBar from '@/components/layout/TopBar'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import { UserPlus, Edit2, Check, X, AlertCircle } from 'lucide-react'
+import { UserPlus, Edit2, Check, X, AlertCircle, TrendingUp } from 'lucide-react'
 
 type TeamUser = {
   id: string
@@ -14,8 +14,21 @@ type TeamUser = {
   phone: string | null
   monthly_demo_target: number | null
   monthly_revenue_target: number | null
+  monthly_base_salary: number | null
   is_active: boolean | null
   created_at: string | null
+}
+
+type UserPerf = {
+  user_id: string
+  role: string
+  demos_this_month: number
+  revenue_this_month: number
+  achievement_pct: number
+  multiplier: number
+  est_incentive: number
+  base_salary: number
+  total_payout: number
 }
 
 const ROLE_BADGES: Record<string, string> = {
@@ -27,6 +40,7 @@ const ROLE_BADGES: Record<string, string> = {
 
 export default function TeamPage() {
   const [users, setUsers] = useState<TeamUser[]>([])
+  const [perf, setPerf] = useState<Record<string, UserPerf>>({})
   const [loading, setLoading] = useState(true)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editValues, setEditValues] = useState<Partial<TeamUser>>({})
@@ -40,14 +54,20 @@ export default function TeamPage() {
 
   const supabase = createClient()
 
-  useEffect(() => { fetchUsers() }, [])
+  useEffect(() => { loadAll() }, [])
 
-  async function fetchUsers() {
-    const { data } = await supabase
-      .from('users')
-      .select('id, name, email, role, phone, monthly_demo_target, monthly_revenue_target, is_active, created_at')
-      .order('created_at', { ascending: true })
-    setUsers((data as TeamUser[]) ?? [])
+  async function loadAll() {
+    const [usersRes, perfRes] = await Promise.all([
+      supabase
+        .from('users')
+        .select('id, name, email, role, phone, monthly_demo_target, monthly_revenue_target, monthly_base_salary, is_active, created_at')
+        .order('created_at', { ascending: true }),
+      fetch('/api/team/performance').then(r => r.json()),
+    ])
+    setUsers((usersRes.data as TeamUser[]) ?? [])
+    const perfMap: Record<string, UserPerf> = {}
+    ;((perfRes as UserPerf[]) ?? []).forEach(p => { perfMap[p.user_id] = p })
+    setPerf(perfMap)
     setLoading(false)
   }
 
@@ -59,6 +79,7 @@ export default function TeamPage() {
       phone: user.phone ?? '',
       monthly_demo_target: user.monthly_demo_target ?? 0,
       monthly_revenue_target: user.monthly_revenue_target ?? 0,
+      monthly_base_salary: user.monthly_base_salary ?? 0,
       is_active: user.is_active ?? true,
     })
   }
@@ -72,7 +93,7 @@ export default function TeamPage() {
       body: JSON.stringify(editValues),
     })
     if (res.ok) {
-      await fetchUsers()
+      await loadAll()
       setEditingId(null)
       setSuccessMsg('Changes saved.')
       setTimeout(() => setSuccessMsg(null), 3000)
@@ -96,7 +117,7 @@ export default function TeamPage() {
       setShowInvite(false)
       setInviteEmail('')
       setInviteName('')
-      await fetchUsers()
+      await loadAll()
       setSuccessMsg('Invite sent! They will receive a magic link to set their password.')
       setTimeout(() => setSuccessMsg(null), 5000)
     } else {
@@ -111,6 +132,12 @@ export default function TeamPage() {
     (u.monthly_demo_target === null || u.monthly_revenue_target === null)
   )
 
+  // Payout totals
+  const perfValues = Object.values(perf)
+  const totalBaseSalary = perfValues.reduce((s, p) => s + p.base_salary, 0)
+  const totalIncentive = perfValues.reduce((s, p) => s + p.est_incentive, 0)
+  const totalPayout = totalBaseSalary + totalIncentive
+
   if (loading) return (
     <div className="flex-1 flex items-center justify-center">
       <div className="w-6 h-6 border-2 border-[#1A56DB] border-t-transparent rounded-full animate-spin" />
@@ -119,9 +146,9 @@ export default function TeamPage() {
 
   return (
     <div className="flex-1 flex flex-col">
-      <TopBar title="Team Management" subtitle="Manage roles, targets & salaries" />
+      <TopBar title="Team Management" subtitle="Manage roles, targets & compensation" />
 
-      <div className="flex-1 p-6 space-y-5">
+      <div className="flex-1 p-6 space-y-5 overflow-y-auto">
 
         {/* Alert: members needing target setup */}
         {needsSetup.length > 0 && (
@@ -138,9 +165,28 @@ export default function TeamPage() {
           </div>
         )}
 
+        {/* Payout summary banner */}
+        {perfValues.length > 0 && (
+          <div className="grid grid-cols-3 gap-4">
+            {[
+              { label: 'Total Base Salary', value: formatCurrency(totalBaseSalary), color: '#1A56DB' },
+              { label: 'Est. Incentives This Month', value: formatCurrency(totalIncentive), color: '#7C3AED' },
+              { label: 'Est. Total Payout', value: formatCurrency(totalPayout), color: '#059669' },
+            ].map(item => (
+              <div key={item.label} className="bg-white rounded-xl border border-[#E2E8F0] px-5 py-4 shadow-sm">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8]">{item.label}</p>
+                <p className="text-xl font-bold mt-1" style={{ color: item.color }}>{item.value}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Header row */}
         <div className="flex items-center justify-between">
-          <p className="text-sm text-[#64748B]">{users.filter(u => u.is_active).length} active members</p>
+          <div className="flex items-center gap-3">
+            <p className="text-sm text-[#64748B]">{users.filter(u => u.is_active).length} active members</p>
+            <span className="text-xs text-[#94A3B8]">· Incentive: SDR ₹500/demo · Closer 7% of revenue · multiplied by achievement tier</span>
+          </div>
           <button
             onClick={() => setShowInvite(true)}
             className="flex items-center gap-2 px-4 py-2 bg-[#1A56DB] text-white text-sm font-medium rounded-lg hover:bg-[#1A4FBF] transition-colors"
@@ -206,16 +252,19 @@ export default function TeamPage() {
         )}
 
         {/* Team table */}
-        <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-x-auto">
+          <table className="w-full text-sm min-w-[1100px]">
             <thead>
               <tr className="bg-[#F1F5F9]">
                 <th className="text-left px-5 py-3 text-[10px] font-semibold uppercase tracking-widest text-[#64748B]">Member</th>
                 <th className="text-left px-5 py-3 text-[10px] font-semibold uppercase tracking-widest text-[#64748B]">Role</th>
-                <th className="text-left px-5 py-3 text-[10px] font-semibold uppercase tracking-widest text-[#64748B]">Demo Target / mo</th>
-                <th className="text-left px-5 py-3 text-[10px] font-semibold uppercase tracking-widest text-[#64748B]">Revenue Target / mo</th>
+                <th className="text-left px-5 py-3 text-[10px] font-semibold uppercase tracking-widest text-[#64748B]">Demo Target</th>
+                <th className="text-left px-5 py-3 text-[10px] font-semibold uppercase tracking-widest text-[#64748B]">Rev Target</th>
+                <th className="text-left px-5 py-3 text-[10px] font-semibold uppercase tracking-widest text-[#64748B]">Base Salary</th>
+                <th className="text-left px-5 py-3 text-[10px] font-semibold uppercase tracking-widest text-[#64748B]">Achievement</th>
+                <th className="text-left px-5 py-3 text-[10px] font-semibold uppercase tracking-widest text-[#64748B]">Est. Incentive</th>
+                <th className="text-left px-5 py-3 text-[10px] font-semibold uppercase tracking-widest text-[#64748B]">Total Payout</th>
                 <th className="text-left px-5 py-3 text-[10px] font-semibold uppercase tracking-widest text-[#64748B]">Status</th>
-                <th className="text-left px-5 py-3 text-[10px] font-semibold uppercase tracking-widest text-[#64748B]">Joined</th>
                 <th className="px-5 py-3" />
               </tr>
             </thead>
@@ -223,15 +272,19 @@ export default function TeamPage() {
               {users.map(user => {
                 const needsTarget = (user.role === 'sdr' || user.role === 'closer') &&
                   (user.monthly_demo_target === null || user.monthly_revenue_target === null)
+                const p = perf[user.id]
+                const isEditing = editingId === user.id
+
                 return (
                   <tr key={user.id} className={`hover:bg-[#F8FAFC] transition-colors ${needsTarget ? 'bg-amber-50/40' : ''}`}>
+                    {/* Member */}
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-full bg-[#1A56DB]/10 flex items-center justify-center flex-shrink-0">
                           <span className="text-[#1A56DB] text-xs font-semibold">{user.name.charAt(0).toUpperCase()}</span>
                         </div>
                         <div>
-                          {editingId === user.id ? (
+                          {isEditing ? (
                             <input value={editValues.name ?? ''} onChange={e => setEditValues(v => ({ ...v, name: e.target.value }))}
                               className="px-2 py-1 text-sm border border-[#1A56DB] rounded focus:outline-none w-36" />
                           ) : (
@@ -241,8 +294,10 @@ export default function TeamPage() {
                         </div>
                       </div>
                     </td>
+
+                    {/* Role */}
                     <td className="px-5 py-3.5">
-                      {editingId === user.id ? (
+                      {isEditing ? (
                         <select value={editValues.role ?? user.role} onChange={e => setEditValues(v => ({ ...v, role: e.target.value }))}
                           className="px-2 py-1 text-sm border border-[#1A56DB] rounded focus:outline-none">
                           <option value="sdr">SDR</option>
@@ -256,8 +311,10 @@ export default function TeamPage() {
                         </span>
                       )}
                     </td>
+
+                    {/* Demo Target */}
                     <td className="px-5 py-3.5">
-                      {editingId === user.id ? (
+                      {isEditing ? (
                         <input type="number" min="0" value={editValues.monthly_demo_target ?? 0}
                           onChange={e => setEditValues(v => ({ ...v, monthly_demo_target: Number(e.target.value) }))}
                           className="px-2 py-1 text-sm border border-[#1A56DB] rounded focus:outline-none w-20" />
@@ -269,8 +326,10 @@ export default function TeamPage() {
                         </span>
                       )}
                     </td>
+
+                    {/* Revenue Target */}
                     <td className="px-5 py-3.5">
-                      {editingId === user.id ? (
+                      {isEditing ? (
                         <input type="number" min="0" value={editValues.monthly_revenue_target ?? 0}
                           onChange={e => setEditValues(v => ({ ...v, monthly_revenue_target: Number(e.target.value) }))}
                           className="px-2 py-1 text-sm border border-[#1A56DB] rounded focus:outline-none w-28" />
@@ -282,8 +341,70 @@ export default function TeamPage() {
                         </span>
                       )}
                     </td>
+
+                    {/* Base Salary */}
                     <td className="px-5 py-3.5">
-                      {editingId === user.id ? (
+                      {isEditing ? (
+                        <input type="number" min="0" value={editValues.monthly_base_salary ?? 0}
+                          onChange={e => setEditValues(v => ({ ...v, monthly_base_salary: Number(e.target.value) }))}
+                          className="px-2 py-1 text-sm border border-[#1A56DB] rounded focus:outline-none w-28"
+                          placeholder="₹ per month" />
+                      ) : user.monthly_base_salary ? (
+                        <span className="text-[#0F172A] font-medium">{formatCurrency(user.monthly_base_salary)}</span>
+                      ) : (
+                        <span className="text-xs text-[#94A3B8]">—</span>
+                      )}
+                    </td>
+
+                    {/* Achievement */}
+                    <td className="px-5 py-3.5">
+                      {p ? (
+                        <div className="flex items-center gap-2">
+                          <div className="w-16 h-1.5 bg-[#F1F5F9] rounded-full overflow-hidden">
+                            <div className="h-full rounded-full"
+                              style={{
+                                width: `${Math.min(p.achievement_pct, 100)}%`,
+                                backgroundColor: p.achievement_pct < 70 ? '#EF4444' : p.achievement_pct < 100 ? '#F59E0B' : '#059669',
+                              }} />
+                          </div>
+                          <span className={`text-xs font-semibold ${p.achievement_pct < 70 ? 'text-red-500' : p.achievement_pct < 100 ? 'text-amber-500' : 'text-green-600'}`}>
+                            {p.achievement_pct}%
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-[#94A3B8]">—</span>
+                      )}
+                    </td>
+
+                    {/* Est. Incentive */}
+                    <td className="px-5 py-3.5">
+                      {p ? (
+                        <div>
+                          <span className="font-medium text-[#7C3AED]">{formatCurrency(p.est_incentive)}</span>
+                          {p.multiplier > 0 && (
+                            <span className="ml-1 text-[10px] text-[#94A3B8]">{p.multiplier}×</span>
+                          )}
+                          {p.multiplier === 0 && (
+                            <span className="ml-1 text-[10px] text-red-400">locked</span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-[#94A3B8]">—</span>
+                      )}
+                    </td>
+
+                    {/* Total Payout */}
+                    <td className="px-5 py-3.5">
+                      {p && (p.base_salary > 0 || p.est_incentive > 0) ? (
+                        <span className="font-semibold text-[#059669]">{formatCurrency(p.total_payout)}</span>
+                      ) : (
+                        <span className="text-xs text-[#94A3B8]">—</span>
+                      )}
+                    </td>
+
+                    {/* Status */}
+                    <td className="px-5 py-3.5">
+                      {isEditing ? (
                         <select value={String(editValues.is_active)} onChange={e => setEditValues(v => ({ ...v, is_active: e.target.value === 'true' }))}
                           className="px-2 py-1 text-sm border border-[#1A56DB] rounded focus:outline-none">
                           <option value="true">Active</option>
@@ -296,9 +417,10 @@ export default function TeamPage() {
                         </span>
                       )}
                     </td>
-                    <td className="px-5 py-3.5 text-[#64748B] text-xs">{formatDate(user.created_at)}</td>
+
+                    {/* Edit */}
                     <td className="px-5 py-3.5">
-                      {editingId === user.id ? (
+                      {isEditing ? (
                         <div className="flex items-center gap-1.5">
                           <button onClick={() => saveEdit(user.id)} disabled={saving}
                             className="p-1.5 bg-[#059669] text-white rounded hover:bg-[#047857] disabled:opacity-60 transition-colors" title="Save">
@@ -329,6 +451,16 @@ export default function TeamPage() {
             </div>
           )}
         </div>
+
+        {/* Incentive formula note */}
+        <div className="flex items-start gap-2 p-3 bg-blue-50 border border-blue-100 rounded-lg">
+          <TrendingUp className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
+          <p className="text-xs text-blue-700">
+            <span className="font-semibold">Incentive formula:</span> SDR = ₹500 × demos booked × tier multiplier · Closer = 7% of revenue closed × tier multiplier ·
+            Tier multipliers: &lt;70% = 0× · 70–99% = 1× · 100–119% = 1.25× · 120%+ = 1.5×
+          </p>
+        </div>
+
       </div>
     </div>
   )

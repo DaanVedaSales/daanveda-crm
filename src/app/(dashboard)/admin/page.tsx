@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import TopBar from '@/components/layout/TopBar'
 import KpiCard from '@/components/dashboard/KpiCard'
+import PayoutSummary from '@/components/dashboard/PayoutSummary'
 import { formatCurrency } from '@/lib/utils'
 import Link from 'next/link'
 
@@ -77,6 +78,9 @@ export default async function AdminDashboardPage() {
           <KpiCard label="Revenue Won" value={formatCurrency(revenueThisMonth)} subtitle="This month" accentColor="#059669" />
           <KpiCard label="Active Team" value={activeUsers.length} subtitle={`${sdrs.length} SDRs · ${closers.length} Closers`} accentColor="#0891B2" />
         </div>
+
+        {/* Payout Summary — client component, fetches /api/team/performance */}
+        <PayoutSummary />
 
         {/* Team Performance Table (sorted by risk — PIP candidates first) */}
         <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">

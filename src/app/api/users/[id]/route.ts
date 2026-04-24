@@ -25,7 +25,7 @@ export async function PATCH(
   }
 
   const body = await req.json()
-  const { name, role, phone, monthly_demo_target, monthly_revenue_target, is_active } = body
+  const { name, role, phone, monthly_demo_target, monthly_revenue_target, is_active, monthly_base_salary } = body
 
   // Whitelist valid roles to prevent privilege escalation
   const VALID_ROLES = ['admin', 'sdr', 'closer', 'sales_ops']
@@ -42,6 +42,7 @@ export async function PATCH(
   if (monthly_demo_target !== undefined) updatePayload.monthly_demo_target = Number(monthly_demo_target)
   if (monthly_revenue_target !== undefined) updatePayload.monthly_revenue_target = Number(monthly_revenue_target)
   if (is_active !== undefined) updatePayload.is_active = Boolean(is_active)
+  if (monthly_base_salary !== undefined) updatePayload.monthly_base_salary = monthly_base_salary === null ? null : Number(monthly_base_salary)
 
   const { data, error } = await supabase
     .from('users')

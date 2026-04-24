@@ -76,7 +76,7 @@ function autoMapHeaders(headers: string[]): Record<string, string> {
 
 // ── Spreadsheet Paste Grid ────────────────────────────────────────────────────
 const DEFAULT_COLS = DB_FIELDS.length  // always matches the number of DB fields (13)
-const DEFAULT_ROWS = 20
+const DEFAULT_ROWS = 100
 
 function PasteGrid({
   onRowsReady,
