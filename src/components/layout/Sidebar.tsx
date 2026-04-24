@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils'
 import { ADMIN_NAV, SDR_NAV, CLOSER_NAV } from '@/lib/constants'
 import {
   LayoutDashboard, Database, Users, UserCheck, ClipboardList,
-  Clock, Kanban, Calendar, History, LogOut
+  Clock, Kanban, Calendar, History, LogOut, CalendarCheck
 } from 'lucide-react'
 import type { UserRole } from '@/types/database'
 import { createClient } from '@/lib/supabase/client'
@@ -14,7 +14,7 @@ import { useRouter } from 'next/navigation'
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   LayoutDashboard, Database, Users, UserCheck, ClipboardList,
-  Clock, Kanban, Calendar, History,
+  Clock, Kanban, Calendar, History, CalendarCheck,
 }
 
 const ROLE_LABELS: Record<UserRole, string> = {

@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import TopBar from '@/components/layout/TopBar'
 import KpiCard from '@/components/dashboard/KpiCard'
 import { formatCurrency } from '@/lib/utils'
+import Link from 'next/link'
 
 export default async function AdminDashboardPage() {
   const supabase = createClient()
@@ -58,6 +59,16 @@ export default async function AdminDashboardPage() {
       <TopBar title="Admin Dashboard" subtitle={`${now.toLocaleString('default', { month: 'long' })} ${year} · Team overview`} />
 
       <div className="flex-1 p-6 space-y-6">
+
+        {/* Quick actions row */}
+        <div className="flex justify-end gap-2">
+          <Link
+            href="/api/admin/export"
+            className="flex items-center gap-2 px-4 py-2 border border-[#E2E8F0] text-[#64748B] text-sm font-medium rounded-lg hover:bg-[#F8FAFC] transition-colors"
+          >
+            ↓ Export Full Log
+          </Link>
+        </div>
 
         {/* KPIs */}
         <div className="grid grid-cols-4 gap-4">

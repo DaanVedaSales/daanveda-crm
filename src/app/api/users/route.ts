@@ -20,17 +20,24 @@ async function requireAdmin() {
   return { error: null, status: 200, profile }
 }
 
-// GET /api/users — list all users (admin only)
-export async function GET() {
+// GET /api/users — list users (admin only)
+// Optional query: ?role=closer|sdr|admin to filter by role
+export async function GET(req: NextRequest) {
   const { error, status } = await requireAdmin()
   if (error) return NextResponse.json({ error }, { status })
 
+  const { searchParams } = new URL(req.url)
+  const roleFilter = searchParams.get('role')
+
   const supabase = createServiceClient()
-  const { data, error: dbError } = await supabase
+  let query = supabase
     .from('users')
     .select('id, name, email, role, phone, is_active, monthly_demo_target, monthly_revenue_target, created_at')
     .order('created_at', { ascending: true })
 
+  if (roleFilter) query = query.eq('role', roleFilter)
+
+  const { data, error: dbError } = await query
   if (dbError) return NextResponse.json({ error: dbError.message }, { status: 500 })
   return NextResponse.json(data)
 }

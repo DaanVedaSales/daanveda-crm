@@ -47,7 +47,12 @@ export default async function CloserDashboardPage() {
   const monthStart = `${year}-${String(month).padStart(2, '0')}-01`
   const today = now.toISOString().split('T')[0]
 
-  const [wonRes, pipelineRes, todayDemosRes, followupsRes, commRes] = await Promise.all([
+  // Next 7 days window for upcoming demos
+  const sevenDaysLater = new Date(now)
+  sevenDaysLater.setDate(sevenDaysLater.getDate() + 7)
+  const weekEnd = sevenDaysLater.toISOString().split('T')[0]
+
+  const [wonRes, pipelineRes, todayDemosRes, followupsRes, commRes, upcomingDemosRes] = await Promise.all([
     // Revenue won this month
     supabase.from('deals').select('deal_value').eq('closer_id', profile.id)
       .eq('stage', 'won').gte('date_won_lost', monthStart),
@@ -56,13 +61,23 @@ export default async function CloserDashboardPage() {
       .not('stage', 'in', '("won","lost","ghosted","converted")'),
     // Today's demos
     supabase.from('demos').select('id', { count: 'exact', head: true }).eq('closer_id', profile.id)
-      .gte('demo_date', today).lt('demo_date', `${today}T23:59:59`),
+      .gte('demo_date', `${today}T00:00:00`).lte('demo_date', `${today}T23:59:59`)
+      .in('status', ['scheduled', 'rescheduled']),
     // Overdue follow-ups
     supabase.from('deals').select('id', { count: 'exact', head: true }).eq('closer_id', profile.id)
       .lte('next_follow_up', today).not('stage', 'in', '("won","lost","ghosted")'),
     // This month's commission
     supabase.from('commissions').select('commission_amt').eq('user_id', profile.id)
       .eq('month', month).eq('year', year),
+    // Upcoming demos in next 7 days
+    supabase.from('demos')
+      .select('id, demo_date, organization:organizations(name), sdr:users!demos_sdr_id_fkey(name)')
+      .eq('closer_id', profile.id)
+      .in('status', ['scheduled', 'rescheduled'])
+      .gte('demo_date', `${today}T00:00:00`)
+      .lte('demo_date', `${weekEnd}T23:59:59`)
+      .order('demo_date', { ascending: true })
+      .limit(8),
   ])
 
   const revenueWon = (wonRes.data ?? []).reduce((sum, d) => sum + (d.deal_value ?? 0), 0)
@@ -70,6 +85,7 @@ export default async function CloserDashboardPage() {
   const todayDemos = todayDemosRes.count ?? 0
   const overdueFollowups = followupsRes.count ?? 0
   const commissionEarned = (commRes.data ?? []).reduce((sum, c) => sum + (c.commission_amt ?? 0), 0)
+  const upcomingDemos = (upcomingDemosRes.data ?? []) as any[]
   const target = profile.monthly_revenue_target
 
   const expectedByNow = target > 0 ? (target / 26) * daysElapsed : 0
@@ -171,6 +187,39 @@ export default async function CloserDashboardPage() {
             <p className="text-xs text-[#94A3B8] mt-1">View today's agenda →</p>
           </a>
         </div>
+
+        {/* ── UPCOMING DEMOS (next 7 days) ── */}
+        {upcomingDemos.length > 0 && (
+          <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-[#F1F5F9] flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-[#0F172A]">Upcoming Demos — Next 7 Days</h2>
+              <span className="text-xs text-[#64748B]">{upcomingDemos.length} demo{upcomingDemos.length !== 1 ? 's' : ''}</span>
+            </div>
+            <div className="divide-y divide-[#F1F5F9]">
+              {upcomingDemos.map((demo: any) => {
+                const demoDate = new Date(demo.demo_date)
+                const isToday = demoDate.toISOString().split('T')[0] === today
+                const dayLabel = isToday ? 'Today' : demoDate.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })
+                const timeLabel = demoDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
+                return (
+                  <div key={demo.id} className="px-5 py-3 flex items-center justify-between hover:bg-[#F8FAFC] transition-colors">
+                    <div>
+                      <p className="text-sm font-medium text-[#0F172A]">{demo.organization?.name}</p>
+                      <p className="text-xs text-[#94A3B8] mt-0.5">SDR: {demo.sdr?.name}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className={`text-xs font-semibold ${isToday ? 'text-[#1A56DB]' : 'text-[#0F172A]'}`}>{dayLabel}</p>
+                      <p className="text-xs text-[#94A3B8]">{timeLabel}</p>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+            <div className="px-5 py-3 border-t border-[#F1F5F9]">
+              <a href="/closer/today" className="text-xs text-[#1A56DB] hover:underline font-medium">View today's actions →</a>
+            </div>
+          </div>
+        )}
 
       </div>
     </div>

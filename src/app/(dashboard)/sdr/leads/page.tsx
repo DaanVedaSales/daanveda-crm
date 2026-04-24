@@ -96,7 +96,7 @@ export default function SDRLeadsPage() {
                       )}
                     </div>
                     <p className="text-xs text-[#94A3B8] truncate">
-                      {lead.organization?.location} · SQL {lead.organization?.sql_score ?? 0}/8
+                      {lead.organization?.location} · SQL {(lead.organization as any)?.sql_score_label ?? (lead.organization?.sql_score != null ? `${lead.organization.sql_score}/8` : 'N/A')}
                     </p>
                     <div className="flex items-center gap-2 mt-1.5">
                       <span className={cn('text-[10px] px-2 py-0.5 rounded-full font-medium', LEAD_STATUS_COLORS[lead.status as LeadStatus])}>
@@ -179,7 +179,7 @@ function LeadDetailPanel({
           <span className={cn('text-[10px] px-2 py-0.5 rounded-full font-medium', LEAD_STATUS_COLORS[lead.status as LeadStatus])}>
             {LEAD_STATUS_LABELS[lead.status as LeadStatus]}
           </span>
-          <span className="text-[10px] text-[#94A3B8]">SQL: {org?.sql_score ?? 0}/8</span>
+          <span className="text-[10px] text-[#94A3B8]">SQL: {(org as any)?.sql_score_label ?? (org?.sql_score != null ? `${org.sql_score}/8` : 'N/A')}</span>
           {lead.interest_signal && (
             <span className={cn('text-[10px] font-semibold px-1.5 py-0.5 rounded-full', INTEREST_SIGNAL_COLORS[lead.interest_signal as InterestSignal])}>
               {lead.interest_signal.toUpperCase()}
@@ -378,12 +378,29 @@ function BookDemoModal({ lead, contacts, onClose, onSuccess }: { lead: LeadWithO
   const [demoDate, setDemoDate] = useState('')
   const [summary, setSummary] = useState('')
   const [signal, setSignal] = useState('warm')
+  const [closerId, setCloserId] = useState('')
+  const [closers, setClosers] = useState<{ id: string; name: string }[]>([])
   const [saving, setSaving] = useState(false)
   const summaryTooShort = summary.trim().length < 50
+  const org = lead.organization
+  const primaryContact = contacts.find(c => c.is_primary) ?? contacts[0]
+
+  // Fetch active closers when modal opens
+  useEffect(() => {
+    fetch('/api/users?role=closer')
+      .then(r => r.json())
+      .then(data => {
+        const activeClosers = (data ?? []).filter((u: any) => u.is_active && u.role === 'closer')
+        setClosers(activeClosers)
+        if (activeClosers.length === 1) setCloserId(activeClosers[0].id)
+      })
+      .catch(() => {})
+  }, [])
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     if (summaryTooShort) return
+    if (!closerId) return alert('Please select a closer for this demo.')
     setSaving(true)
     const res = await fetch('/api/demos', {
       method: 'POST',
@@ -391,7 +408,7 @@ function BookDemoModal({ lead, contacts, onClose, onSuccess }: { lead: LeadWithO
       body: JSON.stringify({
         lead_id: lead.id, org_id: lead.org_id,
         demo_date: demoDate, sdr_summary: summary.trim(),
-        sdr_interest_signal: signal,
+        sdr_interest_signal: signal, closer_id: closerId,
       }),
     })
     if (res.ok) onSuccess()
@@ -404,43 +421,133 @@ function BookDemoModal({ lead, contacts, onClose, onSuccess }: { lead: LeadWithO
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
-        <h3 className="font-semibold text-[#0F172A] mb-1">Book Demo</h3>
-        <p className="text-xs text-[#64748B] mb-4">{lead.organization?.name}</p>
-        <form onSubmit={submit} className="space-y-3">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-start justify-between mb-4">
           <div>
-            <label className="block text-[10px] font-semibold uppercase tracking-widest text-[#64748B] mb-1">Demo Date & Time <span className="text-red-500">*</span></label>
-            <input type="datetime-local" value={demoDate} onChange={e => setDemoDate(e.target.value)} required min={new Date().toISOString().slice(0,16)} className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20" />
+            <h3 className="font-semibold text-[#0F172A] text-base">Book Demo</h3>
+            <p className="text-xs text-[#64748B] mt-0.5">This will hand off the lead to the selected Closer</p>
           </div>
-          <div>
-            <label className="block text-[10px] font-semibold uppercase tracking-widest text-[#64748B] mb-1">Interest Signal</label>
-            <select value={signal} onChange={e => setSignal(e.target.value)} className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20">
-              {['hot','warm','cold'].map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
-            </select>
+          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#64748B] text-xl leading-none">×</button>
+        </div>
+
+        {/* Org context — read only */}
+        <div className="bg-[#F8FAFC] rounded-xl border border-[#E2E8F0] p-3.5 mb-4 space-y-1.5">
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8]">Organisation</p>
+          <p className="font-semibold text-[#0F172A] text-sm">{org?.name}</p>
+          <div className="flex flex-wrap gap-3 text-xs text-[#64748B]">
+            {org?.location && <span>📍 {org.location}</span>}
+            {org?.url && <a href={org.url} target="_blank" rel="noreferrer" className="text-[#1A56DB] hover:underline">{org.url}</a>}
+            {org?.annual_revenue && <span>💰 ₹{(org.annual_revenue/100000).toFixed(0)}L revenue</span>}
+            {org?.team_size && <span>👥 {org.team_size} people</span>}
           </div>
+          {primaryContact && (
+            <div className="flex gap-3 text-xs text-[#64748B] pt-1 border-t border-[#E2E8F0] mt-1">
+              <span className="font-medium text-[#0F172A]">KDM: {primaryContact.name}</span>
+              {primaryContact.designation && <span>{primaryContact.designation}</span>}
+              {primaryContact.phone && <span>📞 {primaryContact.phone}</span>}
+              {primaryContact.email && <span>✉️ {primaryContact.email}</span>}
+            </div>
+          )}
+        </div>
+
+        <form onSubmit={submit} className="space-y-3.5">
+          {/* Demo date */}
           <div>
             <label className="block text-[10px] font-semibold uppercase tracking-widest text-[#64748B] mb-1">
-              Conversation Summary <span className="text-red-500">* (min 50 chars)</span>
+              Demo Date & Time <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="datetime-local"
+              value={demoDate}
+              onChange={e => setDemoDate(e.target.value)}
+              required
+              min={new Date().toISOString().slice(0, 16)}
+              className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20"
+            />
+          </div>
+
+          {/* Closer selection */}
+          <div>
+            <label className="block text-[10px] font-semibold uppercase tracking-widest text-[#64748B] mb-1">
+              Assign Closer <span className="text-red-500">*</span>
+            </label>
+            {closers.length === 0 ? (
+              <p className="text-xs text-[#94A3B8] py-2">Loading closers...</p>
+            ) : (
+              <select
+                value={closerId}
+                onChange={e => setCloserId(e.target.value)}
+                required
+                className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20"
+              >
+                <option value="">— Select a Closer —</option>
+                {closers.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          {/* Interest signal */}
+          <div>
+            <label className="block text-[10px] font-semibold uppercase tracking-widest text-[#64748B] mb-1">Interest Signal</label>
+            <div className="flex gap-2">
+              {[
+                { value: 'hot', label: '🔥 Hot' },
+                { value: 'warm', label: '✨ Warm' },
+                { value: 'cold', label: '❄️ Cold' },
+              ].map(s => (
+                <button
+                  key={s.value}
+                  type="button"
+                  onClick={() => setSignal(s.value)}
+                  className={cn(
+                    'flex-1 py-1.5 text-xs font-medium rounded-lg border transition-colors',
+                    signal === s.value
+                      ? 'bg-[#1A56DB] text-white border-[#1A56DB]'
+                      : 'border-[#E2E8F0] text-[#64748B] hover:border-[#1A56DB]/40'
+                  )}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Conversation summary */}
+          <div>
+            <label className="block text-[10px] font-semibold uppercase tracking-widest text-[#64748B] mb-1">
+              Conversation Summary for Closer <span className="text-red-500">* (min 50 chars)</span>
             </label>
             <textarea
               value={summary}
               onChange={e => setSummary(e.target.value)}
-              required rows={4}
-              placeholder="Summarize the full conversation — why are they interested? What was discussed? What are their key pain points?"
+              required
+              rows={4}
+              placeholder="What did you discuss? Why are they interested? Key pain points, budget signals, decision timeline — anything the Closer needs to know before the demo."
               className={cn(
-                "w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 resize-none",
-                summaryTooShort && summary.length > 0 ? "border-red-400 focus:ring-red-300/20" : "border-[#E2E8F0] focus:ring-[#1A56DB]/20"
+                'w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 resize-none',
+                summaryTooShort && summary.length > 0
+                  ? 'border-red-400 focus:ring-red-300/20'
+                  : 'border-[#E2E8F0] focus:ring-[#1A56DB]/20'
               )}
             />
-            <p className={cn("text-[10px] mt-1", summaryTooShort ? "text-red-500" : "text-[#94A3B8]")}>
-              {summary.trim().length}/50 characters {summaryTooShort ? '— cannot submit until 50+ chars' : '✓'}
+            <p className={cn('text-[10px] mt-1', summaryTooShort ? 'text-red-500' : 'text-[#94A3B8]')}>
+              {summary.trim().length}/50 chars {summaryTooShort ? '— cannot submit until 50+ chars' : '✓'}
             </p>
           </div>
+
           <div className="flex gap-2 pt-1">
-            <button type="submit" disabled={saving || summaryTooShort} className="flex-1 py-2 bg-[#059669] text-white text-sm font-medium rounded-lg hover:bg-[#047857] disabled:opacity-60 disabled:cursor-not-allowed">
+            <button
+              type="submit"
+              disabled={saving || summaryTooShort || !closerId || !demoDate}
+              className="flex-1 py-2 bg-[#059669] text-white text-sm font-medium rounded-lg hover:bg-[#047857] disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+            >
               {saving ? 'Booking...' : 'Confirm Demo Booking'}
             </button>
-            <button type="button" onClick={onClose} className="py-2 px-4 border border-[#E2E8F0] text-sm text-[#64748B] rounded-lg hover:bg-[#F8FAFC]">Cancel</button>
+            <button type="button" onClick={onClose} className="py-2 px-4 border border-[#E2E8F0] text-sm text-[#64748B] rounded-lg hover:bg-[#F8FAFC]">
+              Cancel
+            </button>
           </div>
         </form>
       </div>

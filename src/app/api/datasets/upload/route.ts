@@ -1,35 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { SQL_SCORE_RUBRIC } from '@/lib/constants'
 
 const MAX_ROWS_PER_UPLOAD = 5000 // DoS protection
-
-function calculateSQLScore(org: {
-  annual_revenue?: number | null
-  team_size?: number | null
-  age_years?: number | null
-  url?: string | null
-  linkedin_url?: string | null
-  thematic_areas?: string[] | null
-  location?: string | null
-}, hasKdmEmail: boolean): number {
-  let score = 0
-  if (org.annual_revenue && org.annual_revenue >= 5000000) score++
-  if (org.team_size && org.team_size >= 10) score++
-  if (org.age_years && org.age_years >= 3) score++
-  if (org.url) score++
-  if (org.linkedin_url) score++
-  if (org.thematic_areas && org.thematic_areas.length > 0) score++
-  if (org.location) score++
-  if (hasKdmEmail) score++
-  return Math.min(score, 8)
-}
 
 // POST /api/datasets/upload — bulk create orgs + contacts from CSV rows (admin only)
 export async function POST(req: NextRequest) {
   const supabase = createClient()
 
-  // Auth + admin role check
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -45,10 +22,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'dataset_id and rows array are required' }, { status: 400 })
   }
 
-  // DoS protection: cap rows per request
   if (rows.length > MAX_ROWS_PER_UPLOAD) {
     return NextResponse.json(
-      { error: `Maximum ${MAX_ROWS_PER_UPLOAD} rows per upload. Split your CSV into smaller batches.` },
+      { error: `Maximum ${MAX_ROWS_PER_UPLOAD} rows per upload. Split your file into smaller batches.` },
       { status: 400 }
     )
   }
@@ -61,20 +37,19 @@ export async function POST(req: NextRequest) {
   for (const row of rows) {
     const {
       name, url, location, annual_revenue, team_size, thematic_areas,
-      age_years, linkedin_url,
-      kdm_name, kdm_phone, kdm_email, kdm_designation
+      age_years, linkedin_url, sql_score_label,
+      kdm_name, kdm_phone, kdm_email, kdm_designation,
     } = row
 
+    // Org name is the only required field
     if (!name || typeof name !== 'string') { skipped++; continue }
-
-    // Sanitize name — trim and cap length
     const cleanName = name.trim().slice(0, 255)
     if (!cleanName) { skipped++; continue }
 
-    // Check for duplicate (name match)
+    // Duplicate check (case-insensitive org name match)
     const { data: existing } = await supabase
       .from('organizations')
-      .select('id, name')
+      .select('id')
       .ilike('name', cleanName)
       .limit(1)
       .single()
@@ -85,26 +60,15 @@ export async function POST(req: NextRequest) {
       continue
     }
 
-    const hasKdmEmail = !!kdm_email
-
-    // Parse thematic_areas — may come as string or array
+    // Parse thematic_areas — may come as comma-separated string or array
     let thematicArr: string[] = []
     if (Array.isArray(thematic_areas)) thematicArr = thematic_areas
-    else if (typeof thematic_areas === 'string') {
+    else if (typeof thematic_areas === 'string' && thematic_areas.trim()) {
       thematicArr = thematic_areas.split(',').map((s: string) => s.trim()).filter(Boolean)
     }
 
-    const sql_score = calculateSQLScore({
-      annual_revenue: annual_revenue ? Number(annual_revenue) : null,
-      team_size: team_size ? Number(team_size) : null,
-      age_years: age_years ? Number(age_years) : null,
-      url: url || null,
-      linkedin_url: linkedin_url || null,
-      thematic_areas: thematicArr,
-      location: location || null,
-    }, hasKdmEmail)
-
     // Insert organization
+    // sql_score_label is stored as-is from the upload (pre-scored externally)
     const { data: org, error: orgError } = await supabase
       .from('organizations')
       .insert({
@@ -114,17 +78,17 @@ export async function POST(req: NextRequest) {
         linkedin_url: linkedin_url ? String(linkedin_url).slice(0, 500) : null,
         location: location ? String(location).slice(0, 255) : null,
         thematic_areas: thematicArr.length > 0 ? thematicArr : null,
-        annual_revenue: annual_revenue ? Number(annual_revenue) : null,
-        team_size: team_size ? Number(team_size) : null,
-        age_years: age_years ? Number(age_years) : null,
-        sql_score,
+        annual_revenue: annual_revenue ? Number(annual_revenue) || null : null,
+        team_size: team_size ? Number(team_size) || null : null,
+        age_years: age_years ? Number(age_years) || null : null,
+        sql_score_label: sql_score_label ? String(sql_score_label).slice(0, 50) : null,
       })
       .select()
       .single()
 
     if (orgError) { errors.push(`${cleanName}: ${orgError.message}`); continue }
 
-    // Insert contact (KDM) if provided
+    // Insert KDM contact if name provided
     if (kdm_name) {
       await supabase.from('contacts').insert({
         org_id: org.id,
@@ -136,7 +100,7 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    // Create lead record
+    // Create lead record (starts in SDR queue)
     await supabase.from('leads').insert({
       org_id: org.id,
       dataset_id,
@@ -147,7 +111,7 @@ export async function POST(req: NextRequest) {
     created++
   }
 
-  // Update dataset total_records
+  // Update dataset record count
   await supabase
     .from('datasets')
     .update({ total_records: created })

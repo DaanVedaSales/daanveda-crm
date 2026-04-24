@@ -463,6 +463,7 @@ export type Database = {
           location: string | null
           name: string
           sql_score: number | null
+          sql_score_label: string | null
           team_size: number | null
           thematic_areas: string[] | null
           updated_at: string | null
@@ -479,6 +480,7 @@ export type Database = {
           location?: string | null
           name: string
           sql_score?: number | null
+          sql_score_label?: string | null
           team_size?: number | null
           thematic_areas?: string[] | null
           updated_at?: string | null
@@ -495,6 +497,7 @@ export type Database = {
           location?: string | null
           name?: string
           sql_score?: number | null
+          sql_score_label?: string | null
           team_size?: number | null
           thematic_areas?: string[] | null
           updated_at?: string | null

@@ -135,6 +135,7 @@ export const SDR_NAV = [
   { href: '/sdr', label: 'Dashboard', icon: 'LayoutDashboard' },
   { href: '/sdr/leads', label: 'Assigned Leads', icon: 'ClipboardList' },
   { href: '/sdr/followups', label: 'Follow-ups', icon: 'Clock' },
+  { href: '/sdr/demos', label: 'Booked Demos', icon: 'CalendarCheck' },
 ]
 
 export const CLOSER_NAV = [
