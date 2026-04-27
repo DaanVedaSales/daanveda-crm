@@ -390,11 +390,12 @@ function BookDemoModal({ lead, contacts, onClose, onSuccess }: { lead: LeadWithO
     fetch('/api/closers')
       .then(r => r.json())
       .then(data => {
-        const activeClosers = data ?? []
+        // Guard: ensure we received an array (not an error object)
+        const activeClosers = Array.isArray(data) ? data : []
         setClosers(activeClosers)
         if (activeClosers.length === 1) setCloserId(activeClosers[0].id)
       })
-      .catch(() => {})
+      .catch(() => setClosers([]))
   }, [])
 
   async function submit(e: React.FormEvent) {

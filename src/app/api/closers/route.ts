@@ -1,15 +1,19 @@
 import { NextResponse } from 'next/server'
-import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { createClient } from '@/lib/supabase/server'
 
 // GET /api/closers — returns active closers (any authenticated user can call this)
 // Used by SDR BookDemoModal to populate the closer dropdown.
 // Returns only id + name — no sensitive data exposed.
+// RLS policy "users_see_active_closers" allows any authenticated user to SELECT
+// rows where role='closer' AND is_active=true, so no service role key needed here.
 export async function GET() {
-  const authClient = createClient()
-  const { data: { user } } = await authClient.auth.getUser()
+  const supabase = createClient()
+
+  // Verify caller is authenticated
+  const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const supabase = createServiceClient()
+  // RLS permits this query for any authenticated user
   const { data, error } = await supabase
     .from('users')
     .select('id, name')
