@@ -33,16 +33,22 @@ export async function PATCH(
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // If marked attended, log activity on the lead
+  // If marked attended: move deal from demo_scheduled → demo_done + log activity
   if (status === 'attended') {
-    await supabase.from('activities').insert({
-      lead_id: data.lead_id,
-      org_id: data.org_id,
-      user_id: (await supabase.from('users').select('id').eq('auth_id', user.id).single()).data?.id ?? '',
-      activity_type: 'note',
-      notes: `Demo attended. ${post_demo_notes ? `Notes: ${post_demo_notes}` : ''}`,
-      new_value: 'demo_attended',
-    })
+    const actorId = (await supabase.from('users').select('id').eq('auth_id', user.id).single()).data?.id ?? ''
+    await Promise.all([
+      supabase.from('deals')
+        .update({ stage: 'demo_done', updated_at: new Date().toISOString() })
+        .eq('demo_id', params.id),
+      supabase.from('activities').insert({
+        lead_id: data.lead_id,
+        org_id: data.org_id,
+        user_id: actorId,
+        activity_type: 'note',
+        notes: `Demo attended. ${post_demo_notes ? `Notes: ${post_demo_notes}` : ''}`,
+        new_value: 'demo_attended',
+      }),
+    ])
   }
 
   if (status === 'no_show') {

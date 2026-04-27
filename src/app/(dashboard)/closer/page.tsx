@@ -56,9 +56,10 @@ export default async function CloserDashboardPage() {
     // Revenue won this month
     supabase.from('deals').select('deal_value').eq('closer_id', profile.id)
       .eq('stage', 'won').gte('date_won_lost', monthStart),
-    // Active pipeline count (not won/lost/ghosted)
+    // Active pipeline count (not won/lost/ghosted, not removed from board)
     supabase.from('deals').select('id', { count: 'exact', head: true }).eq('closer_id', profile.id)
-      .not('stage', 'in', '("won","lost","ghosted","converted")'),
+      .not('stage', 'in', '("won","lost","ghosted","converted")')
+      .or('removed_from_board.is.null,removed_from_board.eq.false'),
     // Today's demos
     supabase.from('demos').select('id', { count: 'exact', head: true }).eq('closer_id', profile.id)
       .gte('demo_date', `${today}T00:00:00`).lte('demo_date', `${today}T23:59:59`)

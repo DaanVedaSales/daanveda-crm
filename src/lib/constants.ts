@@ -61,6 +61,7 @@ export const INTEREST_SIGNAL_COLORS: Record<InterestSignal, string> = {
 // ─── Deal Stage Config ───────────────────────────────────────────────────────
 
 export const DEAL_STAGE_LABELS: Record<DealStage, string> = {
+  demo_scheduled: 'Demo Scheduled',
   demo_done: 'Demo Done',
   proposal_sent: 'Proposal Sent',
   follow_up: 'Follow Up',
@@ -73,8 +74,9 @@ export const DEAL_STAGE_LABELS: Record<DealStage, string> = {
 }
 
 export const DEAL_STAGE_COLORS: Record<DealStage, string> = {
+  demo_scheduled: '#7C3AED',
   demo_done: '#1A56DB',
-  proposal_sent: '#7C3AED',
+  proposal_sent: '#0891B2',
   follow_up: '#F59E0B',
   negotiation: '#EA580C',
   won: '#059669',
@@ -84,8 +86,9 @@ export const DEAL_STAGE_COLORS: Record<DealStage, string> = {
   converted: '#047857',
 }
 
+// Kanban columns — proposal_sent is now a button action, not a column
 export const KANBAN_STAGES: DealStage[] = [
-  'demo_done', 'proposal_sent', 'follow_up', 'negotiation', 'won', 'lost', 'ghosted'
+  'demo_scheduled', 'demo_done', 'follow_up', 'negotiation', 'won', 'lost', 'ghosted'
 ]
 
 // ─── Activity Channels ───────────────────────────────────────────────────────

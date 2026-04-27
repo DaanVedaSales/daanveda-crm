@@ -20,6 +20,8 @@ export async function GET(req: NextRequest) {
 
   if (closerId) query = query.eq('closer_id', closerId)
   if (stage) query = query.eq('stage', stage)
+  // Never return removed-from-board deals (ghosted soft-delete)
+  query = query.or('removed_from_board.is.null,removed_from_board.eq.false')
 
   const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

@@ -31,15 +31,20 @@ export default function SDRLeadsPage() {
     ))
   }, [search, leads])
 
+  // Statuses that should NOT appear in Assigned Leads (they live in Follow-ups or are handed off)
+  const EXCLUDE_FROM_ASSIGNED = new Set(['demo_booked', 'call_again', 'not_reachable', 'not_interested'])
+
   async function fetchLeads() {
     const { data: user } = await supabase.auth.getUser()
     const { data: profile } = await supabase.from('users').select('id').eq('auth_id', user.user!.id).single()
     if (!profile) return
 
     const res = await fetch(`/api/leads?assigned_to=${profile.id}`)
-    const data = await res.json()
-    setLeads(data ?? [])
-    setFiltered(data ?? [])
+    const data: LeadWithOrg[] = await res.json()
+    // Only show active working leads — demo_booked/call_again/not_reachable go to other views
+    const active = (data ?? []).filter(l => !EXCLUDE_FROM_ASSIGNED.has(l.status))
+    setLeads(active)
+    setFiltered(active)
     setLoading(false)
   }
 

@@ -34,6 +34,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'lead_id, org_id, and demo_date are required' }, { status: 400 })
   }
 
+  // Prevent duplicate booking — if lead is already demo_booked, block it
+  const { data: existingLead } = await supabase.from('leads').select('status').eq('id', lead_id).single()
+  if (existingLead?.status === 'demo_booked') {
+    return NextResponse.json(
+      { error: 'A demo is already booked for this lead. Only one active demo per lead is allowed.' },
+      { status: 409 }
+    )
+  }
+
   const demoDateObj = new Date(demo_date)
   if (isNaN(demoDateObj.getTime())) {
     return NextResponse.json({ error: 'Invalid demo_date format' }, { status: 400 })
@@ -100,7 +109,7 @@ export async function POST(req: NextRequest) {
 
   if (demoError) return NextResponse.json({ error: demoError.message }, { status: 500 })
 
-  // 2. Create deal record (starts at demo_done stage — visible in closer's pipeline)
+  // 2. Create deal record — starts at demo_scheduled until closer marks demo as attended
   const { error: dealError } = await supabase
     .from('deals')
     .insert({
@@ -108,7 +117,7 @@ export async function POST(req: NextRequest) {
       lead_id,
       org_id,
       closer_id: assignedCloserId,
-      stage: 'demo_done',
+      stage: 'demo_scheduled',
       first_demo_date: demo_date.split('T')[0],
     })
 

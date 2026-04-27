@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
 
   // Validate enum values to prevent unexpected filter injection
   const VALID_PHASES = ['sdr', 'closer', 'won', 'lost']
-  const VALID_STATUSES = ['new', 'assigned', 'contacted', 'demo_booked', 'won', 'lost', 'not_interested', 'dnc']
+  const VALID_STATUSES = ['new', 'assigned', 'contacted', 'call_again', 'hot', 'demo_booked', 'won', 'lost', 'not_interested', 'not_reachable', 'recycled', 'dnc']
   if (phase && !VALID_PHASES.includes(phase)) {
     return NextResponse.json({ error: 'Invalid phase value' }, { status: 400 })
   }

@@ -239,6 +239,8 @@ export type Database = {
           org_id: string
           payment_confirmed: boolean | null
           plan_type: string | null
+          proposal_sent_at: string | null
+          removed_from_board: boolean | null
           sales_cycle_days: number | null
           stage: Database["public"]["Enums"]["deal_stage"]
           updated_at: string | null
@@ -263,6 +265,8 @@ export type Database = {
           org_id: string
           payment_confirmed?: boolean | null
           plan_type?: string | null
+          proposal_sent_at?: string | null
+          removed_from_board?: boolean | null
           sales_cycle_days?: number | null
           stage?: Database["public"]["Enums"]["deal_stage"]
           updated_at?: string | null
@@ -287,6 +291,8 @@ export type Database = {
           org_id?: string
           payment_confirmed?: boolean | null
           plan_type?: string | null
+          proposal_sent_at?: string | null
+          removed_from_board?: boolean | null
           sales_cycle_days?: number | null
           stage?: Database["public"]["Enums"]["deal_stage"]
           updated_at?: string | null
@@ -606,7 +612,7 @@ export type Database = {
     Enums: {
       activity_type: "call" | "email" | "linkedin" | "whatsapp" | "note" | "status_change" | "assignment" | "demo_booked" | "follow_up" | "dataset_rating"
       dataset_source: "NGOverse" | "LinkedIn" | "Manual" | "Referral" | "Other"
-      deal_stage: "demo_done" | "proposal_sent" | "follow_up" | "negotiation" | "won" | "lost" | "ghosted" | "invoice_sent" | "converted"
+      deal_stage: "demo_scheduled" | "demo_done" | "proposal_sent" | "follow_up" | "negotiation" | "won" | "lost" | "ghosted" | "invoice_sent" | "converted"
       demo_status: "scheduled" | "attended" | "no_show" | "rescheduled" | "cancelled"
       interest_signal: "hot" | "warm" | "cold" | "dead"
       invoice_status: "not_generated" | "sent" | "paid" | "overdue"
@@ -673,7 +679,7 @@ export const Constants = {
     Enums: {
       activity_type: ["call", "email", "linkedin", "whatsapp", "note", "status_change", "assignment", "demo_booked", "follow_up", "dataset_rating"],
       dataset_source: ["NGOverse", "LinkedIn", "Manual", "Referral", "Other"],
-      deal_stage: ["demo_done", "proposal_sent", "follow_up", "negotiation", "won", "lost", "ghosted", "invoice_sent", "converted"],
+      deal_stage: ["demo_scheduled", "demo_done", "proposal_sent", "follow_up", "negotiation", "won", "lost", "ghosted", "invoice_sent", "converted"],
       demo_status: ["scheduled", "attended", "no_show", "rescheduled", "cancelled"],
       interest_signal: ["hot", "warm", "cold", "dead"],
       invoice_status: ["not_generated", "sent", "paid", "overdue"],
