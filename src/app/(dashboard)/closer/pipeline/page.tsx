@@ -1,12 +1,13 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import TopBar from '@/components/layout/TopBar'
 import { createClient } from '@/lib/supabase/client'
 import { KANBAN_STAGES, DEAL_STAGE_LABELS, DEAL_STAGE_COLORS } from '@/lib/constants'
 import { formatCurrency } from '@/lib/utils'
 import type { DealStage } from '@/types/database'
-import { X, Send, Trash2, IndianRupee, Calendar, ChevronDown, GripVertical } from 'lucide-react'
+import { X, Send, Trash2, IndianRupee, Calendar, GripVertical, Plus } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 interface DealWithDetails {
   id: string
@@ -26,14 +27,34 @@ interface Column { stage: DealStage; deals: DealWithDetails[] }
 
 // ── Draggable Card ─────────────────────────────────────────────────────────────
 function DealCard({
-  deal, onDragStart, onClick,
+  deal,
+  onDragStart,
+  onClick,
+  onProposalSent,
 }: {
   deal: DealWithDetails
   onDragStart: (dealId: string) => void
   onClick: (deal: DealWithDetails) => void
+  onProposalSent: (dealId: string) => void
 }) {
+  const [markingProposal, setMarkingProposal] = useState(false)
   const daysInStage = Math.floor((Date.now() - new Date(deal.updated_at).getTime()) / 86400000)
-  const isStale = daysInStage > 7 && !['won','lost','ghosted'].includes(deal.stage)
+  const isStale = daysInStage > 7 && !['won', 'lost', 'ghosted'].includes(deal.stage)
+
+  async function handleProposalClick(e: React.MouseEvent) {
+    e.stopPropagation() // don't open the side panel
+    setMarkingProposal(true)
+    await fetch(`/api/deals/${deal.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        proposal_sent_at: new Date().toISOString(),
+        stage: 'follow_up',
+      }),
+    })
+    setMarkingProposal(false)
+    onProposalSent(deal.id)
+  }
 
   return (
     <div
@@ -53,8 +74,8 @@ function DealCard({
               <span className="shrink-0 text-[9px] font-semibold text-[#F59E0B] bg-amber-50 px-1.5 py-0.5 rounded ml-1">STALE</span>
             )}
           </div>
-          <p className={`text-sm font-bold ${deal.deal_value ? 'text-[#0F172A]' : 'text-[#059669]'}`}>
-            {deal.deal_value ? formatCurrency(deal.deal_value) : 'Set value →'}
+          <p className={`text-sm font-bold ${deal.deal_value ? 'text-[#0F172A]' : 'text-[#94A3B8]'}`}>
+            {deal.deal_value ? formatCurrency(deal.deal_value) : 'No value set'}
           </p>
           <div className="flex items-center justify-between mt-1.5 text-[10px] text-[#94A3B8]">
             <span className="truncate">{deal.organization?.location ?? '—'}</span>
@@ -64,10 +85,24 @@ function DealCard({
                 : `${daysInStage}d`}
             </span>
           </div>
+
+          {/* Proposal badge (already sent) */}
           {deal.proposal_sent_at && (
             <div className="mt-1.5">
               <span className="text-[9px] text-[#0891B2] bg-cyan-50 px-1.5 py-0.5 rounded-full font-medium">✓ Proposal sent</span>
             </div>
+          )}
+
+          {/* Proposal Sent button — only on demo_done cards where proposal not yet sent */}
+          {deal.stage === 'demo_done' && !deal.proposal_sent_at && (
+            <button
+              onClick={handleProposalClick}
+              disabled={markingProposal}
+              className="mt-2 w-full flex items-center justify-center gap-1 py-1 bg-cyan-50 border border-cyan-200 text-[#0891B2] text-[10px] font-semibold rounded-lg hover:bg-cyan-100 disabled:opacity-50 transition-colors"
+            >
+              <Send className="w-2.5 h-2.5" />
+              {markingProposal ? 'Saving...' : 'Mark Proposal Sent →'}
+            </button>
           )}
         </div>
       </div>
@@ -77,7 +112,7 @@ function DealCard({
 
 // ── Droppable Column ───────────────────────────────────────────────────────────
 function KanbanColumn({
-  stage, deals, draggingId, onDrop, onDragStart, onCardClick,
+  stage, deals, draggingId, onDrop, onDragStart, onCardClick, onProposalSent,
 }: {
   stage: DealStage
   deals: DealWithDetails[]
@@ -85,6 +120,7 @@ function KanbanColumn({
   onDrop: (stage: DealStage) => void
   onDragStart: (id: string) => void
   onCardClick: (deal: DealWithDetails) => void
+  onProposalSent: (dealId: string) => void
 }) {
   const [isOver, setIsOver] = useState(false)
   const color = DEAL_STAGE_COLORS[stage]
@@ -104,12 +140,9 @@ function KanbanColumn({
         onDragOver={e => { e.preventDefault(); setIsOver(true) }}
         onDragLeave={() => setIsOver(false)}
         onDrop={() => { setIsOver(false); onDrop(stage) }}
-        className={`flex-1 min-h-24 rounded-xl p-2 space-y-2 transition-all ${
-          isOver ? 'ring-2 ring-offset-1' : ''
-        }`}
+        className="flex-1 min-h-24 rounded-xl p-2 space-y-2 transition-all"
         style={{
           backgroundColor: `${color}08`,
-          ...(isOver ? { ringColor: color } : {}),
           outline: isOver ? `2px solid ${color}` : 'none',
           outlineOffset: '2px',
         }}
@@ -120,12 +153,14 @@ function KanbanColumn({
             deal={deal}
             onDragStart={onDragStart}
             onClick={onCardClick}
+            onProposalSent={onProposalSent}
           />
         ))}
         {deals.length === 0 && (
-          <div className={`flex items-center justify-center h-16 rounded-lg border-2 border-dashed transition-colors ${
-            isOver ? 'border-current' : 'border-[#E2E8F0]'
-          }`} style={isOver ? { borderColor: color } : {}}>
+          <div
+            className="flex items-center justify-center h-16 rounded-lg border-2 border-dashed transition-colors"
+            style={isOver ? { borderColor: color } : { borderColor: '#E2E8F0' }}
+          >
             <p className="text-xs text-[#CBD5E1]">Drop here</p>
           </div>
         )}
@@ -151,7 +186,6 @@ function DealPanel({
   const [lossReason, setLossReason] = useState(deal.loss_reason ?? '')
   const [billingName, setBillingName] = useState(deal.billing_name ?? '')
   const [saving, setSaving] = useState(false)
-  const [markingProposal, setMarkingProposal] = useState(false)
   const [removingFromBoard, setRemovingFromBoard] = useState(false)
 
   async function save() {
@@ -172,21 +206,6 @@ function DealPanel({
     onClose()
   }
 
-  async function markProposalSent() {
-    setMarkingProposal(true)
-    await fetch(`/api/deals/${deal.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        proposal_sent_at: new Date().toISOString(),
-        stage: 'follow_up',
-      }),
-    })
-    setMarkingProposal(false)
-    onUpdate()
-    onClose()
-  }
-
   async function removeFromBoard() {
     setRemovingFromBoard(true)
     await fetch(`/api/deals/${deal.id}`, {
@@ -200,7 +219,10 @@ function DealPanel({
   }
 
   const demoDate = deal.demo?.demo_date
-    ? new Date(deal.demo.demo_date).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true })
+    ? new Date(deal.demo.demo_date).toLocaleDateString('en-IN', {
+        weekday: 'short', day: 'numeric', month: 'short',
+        hour: '2-digit', minute: '2-digit', hour12: true,
+      })
     : null
 
   return (
@@ -216,6 +238,9 @@ function DealPanel({
               <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: DEAL_STAGE_COLORS[deal.stage] }}>
                 {DEAL_STAGE_LABELS[deal.stage]}
               </span>
+              {deal.proposal_sent_at && (
+                <span className="text-[10px] text-[#0891B2] bg-cyan-50 px-1.5 py-0.5 rounded-full font-medium">✓ Proposal sent</span>
+              )}
             </div>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-[#F1F5F9] text-[#94A3B8]">
@@ -269,7 +294,7 @@ function DealPanel({
             </div>
           </div>
 
-          {/* Loss Reason (show for lost stage) */}
+          {/* Loss Reason */}
           {deal.stage === 'lost' && (
             <div>
               <label className="text-xs font-semibold text-[#EF4444] uppercase tracking-widest mb-1.5 block">Loss Reason *</label>
@@ -283,7 +308,7 @@ function DealPanel({
             </div>
           )}
 
-          {/* Billing Name (show for won stage) */}
+          {/* Billing Name */}
           {deal.stage === 'won' && (
             <div>
               <label className="text-xs font-semibold text-[#059669] uppercase tracking-widest mb-1.5 block">Billing Name *</label>
@@ -297,21 +322,7 @@ function DealPanel({
             </div>
           )}
 
-          {/* Special actions */}
-          {deal.stage === 'demo_done' && !deal.proposal_sent_at && (
-            <div className="p-3 bg-cyan-50 rounded-lg border border-cyan-200">
-              <p className="text-xs font-medium text-cyan-800 mb-2">Proposal ready to send?</p>
-              <button
-                onClick={markProposalSent}
-                disabled={markingProposal}
-                className="flex items-center gap-1.5 px-4 py-2 bg-[#0891B2] text-white text-xs font-medium rounded-lg hover:bg-[#0e7490] disabled:opacity-60 transition-colors"
-              >
-                <Send className="w-3.5 h-3.5" />
-                {markingProposal ? 'Marking...' : 'Mark Proposal Sent → moves to Follow Up'}
-              </button>
-            </div>
-          )}
-
+          {/* Ghosted — Remove from board */}
           {deal.stage === 'ghosted' && (
             <div className="p-3 bg-red-50 rounded-lg border border-red-100">
               <p className="text-xs text-[#64748B] mb-2">Org has gone dark. Remove from board to declutter — the record stays in your database.</p>
@@ -342,12 +353,223 @@ function DealPanel({
   )
 }
 
+// ── Add Deal Modal ─────────────────────────────────────────────────────────────
+function AddDealModal({
+  onClose,
+  onSuccess,
+}: {
+  onClose: () => void
+  onSuccess: () => void
+}) {
+  const [orgName, setOrgName] = useState('')
+  const [location, setLocation] = useState('')
+  const [kdmName, setKdmName] = useState('')
+  const [kdmPhone, setKdmPhone] = useState('')
+  const [kdmDesignation, setKdmDesignation] = useState('')
+  const [dealValue, setDealValue] = useState('')
+  const [demoStatus, setDemoStatus] = useState<'tbd' | 'scheduled' | 'done'>('tbd')
+  const [demoDate, setDemoDate] = useState('')
+  const [sdrSummary, setSdrSummary] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    setError('')
+    if (demoStatus === 'scheduled' && !demoDate) {
+      setError('Please pick a demo date & time.')
+      return
+    }
+    setSaving(true)
+    const res = await fetch('/api/deals/manual', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        org_name: orgName,
+        location,
+        kdm_name: kdmName,
+        kdm_phone: kdmPhone,
+        kdm_designation: kdmDesignation,
+        deal_value: dealValue || null,
+        demo_status: demoStatus,
+        demo_date: demoDate || null,
+        sdr_summary: sdrSummary,
+      }),
+    })
+    if (res.ok) {
+      onSuccess()
+    } else {
+      const d = await res.json()
+      setError(d.error ?? 'Something went wrong')
+    }
+    setSaving(false)
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-start justify-between mb-5">
+          <div>
+            <h3 className="font-semibold text-[#0F172A] text-base">Add Deal Manually</h3>
+            <p className="text-xs text-[#64748B] mt-0.5">Creates org → KDM → deal in your pipeline</p>
+          </div>
+          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#64748B] text-xl leading-none">×</button>
+        </div>
+
+        <form onSubmit={submit} className="space-y-4">
+          {/* Organisation */}
+          <div className="space-y-3">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8]">Organisation</p>
+            <div>
+              <label className="block text-xs text-[#64748B] mb-1">Name <span className="text-red-500">*</span></label>
+              <input
+                required
+                value={orgName}
+                onChange={e => setOrgName(e.target.value)}
+                placeholder="Org name"
+                className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-[#64748B] mb-1">Location</label>
+              <input
+                value={location}
+                onChange={e => setLocation(e.target.value)}
+                placeholder="City, State"
+                className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20"
+              />
+            </div>
+          </div>
+
+          {/* KDM */}
+          <div className="space-y-3 pt-2 border-t border-[#F1F5F9]">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8]">Key Decision Maker</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2">
+                <label className="block text-xs text-[#64748B] mb-1">Name <span className="text-red-500">*</span></label>
+                <input
+                  required
+                  value={kdmName}
+                  onChange={e => setKdmName(e.target.value)}
+                  placeholder="Full name"
+                  className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-[#64748B] mb-1">Phone</label>
+                <input
+                  value={kdmPhone}
+                  onChange={e => setKdmPhone(e.target.value)}
+                  placeholder="+91 98765 43210"
+                  className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-[#64748B] mb-1">Designation</label>
+                <input
+                  value={kdmDesignation}
+                  onChange={e => setKdmDesignation(e.target.value)}
+                  placeholder="CEO, CFO..."
+                  className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Demo status */}
+          <div className="space-y-3 pt-2 border-t border-[#F1F5F9]">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8]">Demo Status</p>
+            <div className="flex gap-2">
+              {([
+                { value: 'tbd', label: '📅 TBD' },
+                { value: 'scheduled', label: '🕐 Scheduled' },
+                { value: 'done', label: '✅ Already Done' },
+              ] as const).map(opt => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setDemoStatus(opt.value)}
+                  className={cn(
+                    'flex-1 py-1.5 text-xs font-medium rounded-lg border transition-colors',
+                    demoStatus === opt.value
+                      ? 'bg-[#1A56DB] text-white border-[#1A56DB]'
+                      : 'border-[#E2E8F0] text-[#64748B] hover:border-[#1A56DB]/40'
+                  )}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            {demoStatus === 'scheduled' && (
+              <div>
+                <label className="block text-xs text-[#64748B] mb-1">Demo Date & Time <span className="text-red-500">*</span></label>
+                <input
+                  type="datetime-local"
+                  value={demoDate}
+                  onChange={e => setDemoDate(e.target.value)}
+                  min={new Date().toISOString().slice(0, 16)}
+                  className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20"
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Deal value + context */}
+          <div className="space-y-3 pt-2 border-t border-[#F1F5F9]">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8]">Deal Details</p>
+            <div>
+              <label className="block text-xs text-[#64748B] mb-1">Estimated Deal Value (₹)</label>
+              <input
+                type="number"
+                value={dealValue}
+                onChange={e => setDealValue(e.target.value)}
+                placeholder="e.g. 75000"
+                className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-[#64748B] mb-1">Context / Notes</label>
+              <textarea
+                value={sdrSummary}
+                onChange={e => setSdrSummary(e.target.value)}
+                rows={3}
+                placeholder="How did you find them? Key pain points, budget signals, what to expect..."
+                className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20 resize-none"
+              />
+            </div>
+          </div>
+
+          {error && <p className="text-xs text-red-500">{error}</p>}
+
+          <div className="flex gap-2 pt-1">
+            <button
+              type="submit"
+              disabled={saving || !orgName.trim() || !kdmName.trim()}
+              className="flex-1 py-2.5 bg-[#1A56DB] text-white text-sm font-medium rounded-xl hover:bg-[#1e40af] disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+            >
+              {saving ? 'Adding...' : 'Add to Pipeline →'}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="py-2.5 px-4 border border-[#E2E8F0] text-sm text-[#64748B] rounded-xl hover:bg-[#F8FAFC]"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
 // ── Main Pipeline Page ─────────────────────────────────────────────────────────
 export default function PipelinePage() {
   const [columns, setColumns] = useState<Column[]>([])
   const [loading, setLoading] = useState(true)
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [selectedDeal, setSelectedDeal] = useState<DealWithDetails | null>(null)
+  const [showAddDeal, setShowAddDeal] = useState(false)
   const supabase = createClient()
 
   useEffect(() => { fetchPipeline() }, [])
@@ -360,9 +582,7 @@ export default function PipelinePage() {
     const res = await fetch(`/api/deals?closer_id=${profile.id}`)
     const deals: DealWithDetails[] = await res.json()
 
-    // Filter out removed_from_board ghosted deals
     const visible = Array.isArray(deals) ? deals.filter(d => !d.removed_from_board) : []
-
     const grouped = KANBAN_STAGES.map(stage => ({
       stage,
       deals: visible.filter(d => d.stage === stage),
@@ -371,8 +591,9 @@ export default function PipelinePage() {
     setLoading(false)
   }
 
-  function handleDragStart(dealId: string) {
-    setDraggingId(dealId)
+  // Called when Proposal Sent is clicked on a card — optimistically remove from demo_done column
+  function handleProposalSentOnCard(dealId: string) {
+    fetchPipeline()
   }
 
   async function handleDrop(targetStage: DealStage) {
@@ -382,7 +603,6 @@ export default function PipelinePage() {
     const deal = allDeals.find(d => d.id === draggingId)
     if (!deal || deal.stage === targetStage) { setDraggingId(null); return }
 
-    // Validate mandatory fields
     if (targetStage === 'lost') {
       const reason = prompt('Loss reason is required (the record stays in your database):')
       if (!reason?.trim()) { setDraggingId(null); return }
@@ -420,7 +640,9 @@ export default function PipelinePage() {
   }
 
   const allDeals = columns.flatMap(c => c.deals)
-  const totalValue = allDeals.filter(d => !['lost','ghosted'].includes(d.stage)).reduce((s, d) => s + (d.deal_value ?? 0), 0)
+  const totalValue = allDeals
+    .filter(d => !['lost', 'ghosted'].includes(d.stage))
+    .reduce((s, d) => s + (d.deal_value ?? 0), 0)
 
   return (
     <div className="flex-1 flex flex-col">
@@ -428,6 +650,17 @@ export default function PipelinePage() {
         title="Active Pipeline"
         subtitle={`${allDeals.length} deals · ${formatCurrency(totalValue)} pipeline value`}
       />
+
+      {/* Add deal button */}
+      <div className="px-4 pt-3 pb-1 flex justify-end">
+        <button
+          onClick={() => setShowAddDeal(true)}
+          className="flex items-center gap-1.5 px-3.5 py-2 bg-[#1A56DB] text-white text-xs font-semibold rounded-lg hover:bg-[#1e40af] transition-colors shadow-sm"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          Add Deal
+        </button>
+      </div>
 
       <div
         className="flex-1 flex gap-3 p-4 overflow-x-auto"
@@ -440,8 +673,9 @@ export default function PipelinePage() {
             deals={col.deals}
             draggingId={draggingId}
             onDrop={handleDrop}
-            onDragStart={handleDragStart}
+            onDragStart={id => setDraggingId(id)}
             onCardClick={deal => setSelectedDeal(deal)}
+            onProposalSent={handleProposalSentOnCard}
           />
         ))}
       </div>
@@ -451,6 +685,13 @@ export default function PipelinePage() {
           deal={selectedDeal}
           onClose={() => setSelectedDeal(null)}
           onUpdate={fetchPipeline}
+        />
+      )}
+
+      {showAddDeal && (
+        <AddDealModal
+          onClose={() => setShowAddDeal(false)}
+          onSuccess={() => { setShowAddDeal(false); fetchPipeline() }}
         />
       )}
     </div>

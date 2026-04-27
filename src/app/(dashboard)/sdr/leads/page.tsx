@@ -5,7 +5,7 @@ import TopBar from '@/components/layout/TopBar'
 import { createClient } from '@/lib/supabase/client'
 import { LEAD_STATUS_LABELS, LEAD_STATUS_COLORS, INTEREST_SIGNAL_LABELS, INTEREST_SIGNAL_COLORS } from '@/lib/constants'
 import { formatRelativeDate, cn } from '@/lib/utils'
-import { Search, Filter, ChevronRight } from 'lucide-react'
+import { Search, ChevronRight, Plus } from 'lucide-react'
 import type { Lead, Organization, InterestSignal, LeadStatus } from '@/types/database'
 
 interface LeadWithOrg extends Lead {
@@ -19,6 +19,7 @@ export default function SDRLeadsPage() {
   const [search, setSearch] = useState('')
   const [selectedLead, setSelectedLead] = useState<LeadWithOrg | null>(null)
   const [showPanel, setShowPanel] = useState(false)
+  const [showAddLead, setShowAddLead] = useState(false)
   const supabase = createClient()
 
   useEffect(() => { fetchLeads() }, [])
@@ -65,8 +66,8 @@ export default function SDRLeadsPage() {
       <div className={cn('flex flex-col transition-all', showPanel ? 'w-96' : 'flex-1')}>
         <TopBar title="Assigned Leads" subtitle={`${filtered.length} leads`} />
 
-        <div className="p-4 border-b border-[#E2E8F0] bg-white">
-          <div className="relative">
+        <div className="p-4 border-b border-[#E2E8F0] bg-white flex gap-2">
+          <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#94A3B8]" />
             <input
               value={search}
@@ -75,6 +76,13 @@ export default function SDRLeadsPage() {
               className="w-full pl-9 pr-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20 focus:border-[#1A56DB]"
             />
           </div>
+          <button
+            onClick={() => setShowAddLead(true)}
+            className="flex items-center gap-1.5 px-3 py-2 bg-[#1A56DB] text-white text-xs font-semibold rounded-lg hover:bg-[#1e40af] transition-colors shrink-0"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Add Lead
+          </button>
         </div>
 
         <div className="flex-1 overflow-y-auto bg-[#F8FAFC]">
@@ -139,6 +147,157 @@ export default function SDRLeadsPage() {
           />
         </div>
       )}
+
+      {/* Add Lead modal */}
+      {showAddLead && (
+        <AddLeadModal
+          onClose={() => setShowAddLead(false)}
+          onSuccess={() => { setShowAddLead(false); fetchLeads() }}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── Add Lead Modal ─────────────────────────────────────────────────────────────
+function AddLeadModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
+  const [orgName, setOrgName] = useState('')
+  const [location, setLocation] = useState('')
+  const [kdmName, setKdmName] = useState('')
+  const [kdmPhone, setKdmPhone] = useState('')
+  const [kdmDesignation, setKdmDesignation] = useState('')
+  const [notes, setNotes] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    setError('')
+    setSaving(true)
+    const res = await fetch('/api/leads/manual', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        org_name: orgName,
+        location,
+        kdm_name: kdmName,
+        kdm_phone: kdmPhone,
+        kdm_designation: kdmDesignation,
+        notes,
+      }),
+    })
+    if (res.ok) {
+      onSuccess()
+    } else {
+      const d = await res.json()
+      setError(d.error ?? 'Something went wrong')
+    }
+    setSaving(false)
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-start justify-between mb-5">
+          <div>
+            <h3 className="font-semibold text-[#0F172A] text-base">Add Lead Manually</h3>
+            <p className="text-xs text-[#64748B] mt-0.5">Creates org + KDM contact → appears in your Assigned Leads</p>
+          </div>
+          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#64748B] text-xl leading-none">×</button>
+        </div>
+
+        <form onSubmit={submit} className="space-y-4">
+          {/* Organisation */}
+          <div className="space-y-3">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8]">Organisation</p>
+            <div>
+              <label className="block text-xs text-[#64748B] mb-1">Name <span className="text-red-500">*</span></label>
+              <input
+                required
+                value={orgName}
+                onChange={e => setOrgName(e.target.value)}
+                placeholder="Organisation name"
+                className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-[#64748B] mb-1">Location</label>
+              <input
+                value={location}
+                onChange={e => setLocation(e.target.value)}
+                placeholder="City, State"
+                className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20"
+              />
+            </div>
+          </div>
+
+          {/* KDM */}
+          <div className="space-y-3 pt-2 border-t border-[#F1F5F9]">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8]">Key Decision Maker</p>
+            <div>
+              <label className="block text-xs text-[#64748B] mb-1">Name <span className="text-red-500">*</span></label>
+              <input
+                required
+                value={kdmName}
+                onChange={e => setKdmName(e.target.value)}
+                placeholder="Full name"
+                className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-[#64748B] mb-1">Phone</label>
+                <input
+                  value={kdmPhone}
+                  onChange={e => setKdmPhone(e.target.value)}
+                  placeholder="+91 98765 43210"
+                  className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-[#64748B] mb-1">Designation</label>
+                <input
+                  value={kdmDesignation}
+                  onChange={e => setKdmDesignation(e.target.value)}
+                  placeholder="CEO, CFO..."
+                  className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Notes */}
+          <div className="pt-2 border-t border-[#F1F5F9]">
+            <label className="block text-xs text-[#64748B] mb-1">Notes (optional)</label>
+            <textarea
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              rows={2}
+              placeholder="How did you find this lead? Any context..."
+              className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20 resize-none"
+            />
+          </div>
+
+          {error && <p className="text-xs text-red-500">{error}</p>}
+
+          <div className="flex gap-2 pt-1">
+            <button
+              type="submit"
+              disabled={saving || !orgName.trim() || !kdmName.trim()}
+              className="flex-1 py-2.5 bg-[#1A56DB] text-white text-sm font-medium rounded-xl hover:bg-[#1e40af] disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+            >
+              {saving ? 'Adding...' : 'Add Lead →'}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="py-2.5 px-4 border border-[#E2E8F0] text-sm text-[#64748B] rounded-xl hover:bg-[#F8FAFC]"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   )
 }
