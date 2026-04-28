@@ -136,16 +136,16 @@ export const ADMIN_NAV = [
 
 export const SDR_NAV = [
   { href: '/sdr', label: 'Dashboard', icon: 'LayoutDashboard' },
-  { href: '/sdr/leads', label: 'Assigned Leads', icon: 'ClipboardList' },
+  { href: '/sdr/leads', label: 'My Leads', icon: 'ClipboardList' },
   { href: '/sdr/followups', label: 'Follow-ups', icon: 'Clock' },
-  { href: '/sdr/demos', label: 'Booked Demos', icon: 'CalendarCheck' },
+  { href: '/sdr/demos', label: 'My Demos', icon: 'CalendarCheck' },
 ]
 
 export const CLOSER_NAV = [
   { href: '/closer', label: 'Dashboard', icon: 'LayoutDashboard' },
-  { href: '/closer/pipeline', label: 'Active Pipeline', icon: 'Kanban' },
-  { href: '/closer/today', label: "Today's Actions", icon: 'Calendar' },
-  { href: '/closer/past', label: 'Past Context', icon: 'History' },
+  { href: '/closer/pipeline', label: 'Pipeline', icon: 'Kanban' },
+  { href: '/closer/today', label: 'Upcoming Demos', icon: 'Calendar' },
+  { href: '/closer/past', label: 'Deal History', icon: 'History' },
 ]
 
 // ─── SQL Score Rubric ────────────────────────────────────────────────────────
