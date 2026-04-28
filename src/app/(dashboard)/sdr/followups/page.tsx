@@ -121,7 +121,7 @@ export default function FollowupsPage() {
           <p className="text-[11px] text-[#94A3B8] mt-0.5">{lead.organization?.location}</p>
         </div>
         <div className="flex items-center gap-3 shrink-0 ml-4">
-          <span className={cn('text-[10px] px-2 py-0.5 rounded-full font-medium border', LEAD_STATUS_COLORS[lead.status])}>
+          <span className={cn('text-[10px] px-2 py-0.5 rounded-full font-medium', LEAD_STATUS_COLORS[lead.status])}>
             {LEAD_STATUS_LABELS[lead.status]}
           </span>
           {lead.callback_date ? (
