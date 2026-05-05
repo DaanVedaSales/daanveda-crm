@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import TopBar from '@/components/layout/TopBar'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
-import { CheckCircle, XCircle, RefreshCw, ChevronDown, Bell, BellOff, Calendar } from 'lucide-react'
+import { CheckCircle, XCircle, RefreshCw, ChevronDown, Bell } from 'lucide-react'
 
 interface DemoWithDetails {
   id: string
@@ -35,24 +35,6 @@ function formatDay(d: string) {
   return date.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })
 }
 
-function CardSkeleton() {
-  return (
-    <div className="bg-white rounded-2xl border border-[#E2E8F0] overflow-hidden" style={{ boxShadow: '0 1px 4px rgba(15,23,42,0.06)' }}>
-      <div className="h-9 bg-[#F1F5F9] skeleton" />
-      <div className="p-5 space-y-3">
-        <div className="h-4 w-40 bg-[#F1F5F9] rounded skeleton" />
-        <div className="h-3 w-24 bg-[#F1F5F9] rounded skeleton" />
-        <div className="h-16 bg-[#F8FAFC] rounded-xl skeleton mt-4" />
-        <div className="flex gap-2 mt-4">
-          <div className="h-9 flex-1 bg-[#F1F5F9] rounded-xl skeleton" />
-          <div className="h-9 flex-1 bg-[#F1F5F9] rounded-xl skeleton" />
-          <div className="h-9 flex-1 bg-[#F1F5F9] rounded-xl skeleton" />
-        </div>
-      </div>
-    </div>
-  )
-}
-
 export default function ActionsPage() {
   const [allDemos, setAllDemos] = useState<DemoWithDetails[]>([])
   const [filter, setFilter] = useState<Filter>('week')
@@ -62,6 +44,7 @@ export default function ActionsPage() {
   const [saving, setSaving] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
 
+  // Reassignment state
   const [newSdrId, setNewSdrId] = useState<Record<string, string>>({})
   const [newCloserId, setNewCloserId] = useState<Record<string, string>>({})
   const [sdrs, setSdrs] = useState<UserOption[]>([])
@@ -71,6 +54,7 @@ export default function ActionsPage() {
 
   useEffect(() => {
     fetchData()
+    // Preload SDR and Closer lists for reassignment dropdowns
     fetch('/api/sdrs').then(r => r.json()).then(d => setSdrs(Array.isArray(d) ? d : []))
     fetch('/api/closers').then(r => r.json()).then(d => setClosers(Array.isArray(d) ? d : []))
   }, [])
@@ -154,30 +138,14 @@ export default function ActionsPage() {
   const filtered = getFiltered()
   const groups = groupByDate(filtered)
 
-  if (loading) {
-    return (
-      <div className="flex-1 flex flex-col bg-[#F8FAFC]">
-        <TopBar title="Upcoming Demos" subtitle="Loading..." />
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <div className="px-6 pt-4 pb-3 flex gap-2 bg-white border-b border-[#E2E8F0]">
-            {['Today', 'Tomorrow', 'Next 7 Days', 'All'].map(l => (
-              <div key={l} className="h-7 w-20 bg-[#F1F5F9] rounded-full skeleton" />
-            ))}
-          </div>
-          <div className="flex-1 overflow-y-auto p-6 space-y-6">
-            <div className="space-y-3">
-              <div className="h-4 w-20 bg-[#F1F5F9] rounded skeleton" />
-              <CardSkeleton />
-              <CardSkeleton />
-            </div>
-          </div>
-        </div>
-      </div>
-    )
-  }
+  if (loading) return (
+    <div className="flex-1 flex items-center justify-center">
+      <div className="w-6 h-6 border-2 border-[#1A56DB] border-t-transparent rounded-full animate-spin" />
+    </div>
+  )
 
   return (
-    <div className="flex-1 flex flex-col bg-[#F8FAFC]">
+    <div className="flex-1 flex flex-col">
       <TopBar
         title="Upcoming Demos"
         subtitle={`${allDemos.length} upcoming · ${todayCount} today`}
@@ -187,8 +155,7 @@ export default function ActionsPage() {
         <div className="px-6 pt-4 pb-3 flex gap-2 bg-white border-b border-[#E2E8F0]">
           {([['today', 'Today'], ['tomorrow', 'Tomorrow'], ['week', 'Next 7 Days'], ['all', 'All']] as [Filter, string][]).map(([v, label]) => (
             <button key={v} onClick={() => setFilter(v)}
-              className={cn(
-                'px-4 py-1.5 rounded-full text-xs font-medium transition-colors',
+              className={cn('px-4 py-1.5 rounded-full text-xs font-medium transition-colors',
                 filter === v ? 'bg-[#1A56DB] text-white' : 'bg-[#F1F5F9] text-[#64748B] hover:bg-[#E2E8F0]'
               )}>
               {label}
@@ -196,222 +163,169 @@ export default function ActionsPage() {
           ))}
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6 space-y-6 animate-in-page">
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
           {groups.length === 0 ? (
-            <div
-              className="bg-white rounded-2xl border border-[#E2E8F0] p-12 text-center"
-              style={{ boxShadow: '0 1px 4px rgba(15,23,42,0.06)' }}
-            >
-              <div className="w-10 h-10 rounded-xl bg-[#F1F5F9] flex items-center justify-center mx-auto mb-3">
-                <Calendar className="w-5 h-5 text-[#94A3B8]" strokeWidth={1.5} />
-              </div>
-              <p className="text-[13px] font-medium text-[#374151]">No demos in this period</p>
-              <p className="text-[11px] text-[#94A3B8] mt-1">Scheduled demos will appear here</p>
+            <div className="bg-white rounded-xl border border-[#E2E8F0] p-10 text-center text-sm text-[#94A3B8]">
+              No demos in this period.
             </div>
           ) : groups.map(group => (
             <div key={group.label}>
               <h2 className={cn(
-                'text-label mb-3',
-                group.label === 'Today' ? 'text-[#1A56DB]' : 'text-[#94A3B8]'
+                'text-xs font-semibold uppercase tracking-widest mb-3',
+                group.label === 'Today' ? 'text-[#1A56DB]' : 'text-[#64748B]'
               )}>
-                {group.label} &middot; {group.demos.length} {group.demos.length === 1 ? 'demo' : 'demos'}
+                {group.label} ({group.demos.length})
               </h2>
               <div className="space-y-3">
                 {group.demos.map(demo => {
                   const action = actionState[demo.id]
                   const isSaving = saving === demo.id
                   const isExpanded = expanded[demo.id]
-                  const reminderSent = demo.reminder_sent === true
 
                   return (
-                    <div
-                      key={demo.id}
-                      className="bg-white rounded-2xl border border-[#E2E8F0] overflow-hidden"
-                      style={{ boxShadow: '0 1px 4px rgba(15,23,42,0.06)' }}
-                    >
-                      {/* ── Reminder strip ── */}
-                      {reminderSent ? (
-                        <div className="flex items-center gap-2 px-5 py-2.5 bg-[#F0FDF4] border-b border-[#BBF7D0]">
-                          <Bell className="w-3.5 h-3.5 text-[#059669] shrink-0" strokeWidth={2} />
-                          <p className="text-[12px] font-medium text-[#059669]">
-                            SDR confirmed — org has been reminded of this demo
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2 px-5 py-2.5 bg-[#FFFBEB] border-b border-[#FDE68A]">
-                          <BellOff className="w-3.5 h-3.5 text-[#B45309] shrink-0" strokeWidth={2} />
-                          <p className="text-[12px] font-medium text-[#B45309]">
-                            No reminder sent yet — SDR has not confirmed org follow-up
-                          </p>
-                        </div>
-                      )}
-
-                      <div className="p-5">
-                        {/* Header row */}
-                        <div className="flex items-start justify-between gap-3 mb-4">
+                    <div key={demo.id} className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">
+                      <div className="p-4">
+                        <div className="flex items-start justify-between gap-3 mb-3">
                           <div>
-                            <p className="text-[15px] font-semibold text-[#0F172A] tracking-tight">
-                              {demo.organization?.name}
-                            </p>
+                            <p className="font-semibold text-[#0F172A] text-base">{demo.organization?.name}</p>
                             {demo.organization?.location && (
-                              <p className="text-[12px] text-[#94A3B8] mt-0.5">{demo.organization.location}</p>
+                              <p className="text-xs text-[#94A3B8] mt-0.5">{demo.organization.location}</p>
                             )}
-                          </div>
-                          <div className="text-right shrink-0">
-                            <p className="text-[13px] font-semibold text-[#1A56DB]">{formatTime(demo.demo_date)}</p>
-                            {demo.status === 'rescheduled' && (
-                              <span className="inline-block mt-1 text-[10px] bg-amber-50 border border-amber-200 text-amber-700 px-2 py-0.5 rounded-full font-medium">
-                                Rescheduled
-                              </span>
-                            )}
+                            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                              <span className="text-sm font-semibold text-[#1A56DB]">🕐 {formatTime(demo.demo_date)}</span>
+                              {demo.reminder_sent && (
+                                <span className="flex items-center gap-1 text-[10px] text-[#059669] bg-green-50 px-1.5 py-0.5 rounded-full font-medium">
+                                  <Bell className="w-2.5 h-2.5" /> SDR reminded org
+                                </span>
+                              )}
+                              {demo.status === 'rescheduled' && (
+                                <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">Rescheduled</span>
+                              )}
+                            </div>
                           </div>
                         </div>
 
-                        {/* SDR Context block */}
-                        <div className="p-3.5 bg-[#F8FAFC] rounded-xl border border-[#F1F5F9]">
-                          <div className="flex items-center justify-between mb-1.5">
-                            <p className="text-label text-[#94A3B8]">
-                              SDR Context{demo.sdr?.name ? ` · ${demo.sdr.name}` : ''}
+                        {/* SDR Notes */}
+                        <div className="p-3 bg-[#F8FAFC] rounded-lg border border-[#F1F5F9]">
+                          <div className="flex items-center justify-between mb-1">
+                            <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8]">
+                              SDR Context{demo.sdr?.name ? ` — ${demo.sdr.name}` : ''}
                             </p>
-                            <button
-                              onClick={() => setExpanded(p => ({ ...p, [demo.id]: !p[demo.id] }))}
-                              className="flex items-center gap-0.5 text-[11px] text-[#1A56DB] hover:text-[#1743B0]"
-                            >
+                            <button onClick={() => setExpanded(p => ({ ...p, [demo.id]: !p[demo.id] }))}
+                              className="text-[10px] text-[#1A56DB] flex items-center gap-0.5">
                               {isExpanded ? 'Less' : 'More'}
                               <ChevronDown className={cn('w-3 h-3 transition-transform', isExpanded && 'rotate-180')} />
                             </button>
                           </div>
-                          <p className={cn('text-[13px] text-[#374151] leading-relaxed', !isExpanded && 'line-clamp-2')}>
+                          <p className={cn('text-xs text-[#0F172A]', !isExpanded && 'line-clamp-2')}>
                             {demo.sdr_summary}
                           </p>
                         </div>
                       </div>
 
-                      {/* ── Action zone ── */}
+                      {/* Action buttons */}
                       {!action ? (
-                        <div className="px-5 pb-5 flex gap-2 flex-wrap">
-                          <button
-                            onClick={() => setActionState(p => ({ ...p, [demo.id]: 'attended' }))}
-                            className="btn-success flex items-center gap-1.5"
-                          >
-                            <CheckCircle className="w-3.5 h-3.5" strokeWidth={2} /> Attended
+                        <div className="px-4 pb-4 flex gap-2 flex-wrap">
+                          <button onClick={() => setActionState(p => ({ ...p, [demo.id]: 'attended' }))}
+                            className="flex items-center gap-1.5 px-4 py-2 bg-[#059669] text-white text-xs font-medium rounded-lg hover:bg-[#047857]">
+                            <CheckCircle className="w-3.5 h-3.5" /> Demo Attended
                           </button>
-                          <button
-                            onClick={() => setActionState(p => ({ ...p, [demo.id]: 'no_show' }))}
-                            className="btn-danger flex items-center gap-1.5"
-                          >
-                            <XCircle className="w-3.5 h-3.5" strokeWidth={2} /> No Show
+                          <button onClick={() => setActionState(p => ({ ...p, [demo.id]: 'no_show' }))}
+                            className="flex items-center gap-1.5 px-4 py-2 border border-[#EF4444] text-[#EF4444] text-xs font-medium rounded-lg hover:bg-red-50">
+                            <XCircle className="w-3.5 h-3.5" /> No Show
                           </button>
-                          <button
-                            onClick={() => setActionState(p => ({ ...p, [demo.id]: 'reschedule' }))}
-                            className="btn-ghost flex items-center gap-1.5"
-                          >
-                            <RefreshCw className="w-3.5 h-3.5" strokeWidth={2} /> Reschedule
+                          <button onClick={() => setActionState(p => ({ ...p, [demo.id]: 'reschedule' }))}
+                            className="flex items-center gap-1.5 px-4 py-2 border border-[#E2E8F0] text-[#64748B] text-xs font-medium rounded-lg hover:border-[#1A56DB] hover:text-[#1A56DB]">
+                            <RefreshCw className="w-3.5 h-3.5" /> Reschedule
                           </button>
                         </div>
 
                       ) : action === 'attended' ? (
-                        <div className="px-5 py-4 bg-[#F0FDF4] border-t border-[#BBF7D0] flex items-center justify-between">
-                          <p className="text-[13px] text-[#059669] font-medium">Confirm demo was attended?</p>
+                        <div className="px-4 pb-4 bg-green-50 py-3 flex items-center justify-between">
+                          <p className="text-sm text-green-700 font-medium">✅ Confirm demo attended?</p>
                           <div className="flex gap-2">
-                            <button
-                              onClick={() => handleDemoAction(demo, 'attended')}
-                              disabled={isSaving}
-                              className="px-4 py-1.5 bg-[#059669] text-white text-xs font-semibold rounded-lg disabled:opacity-60 hover:bg-[#047857]"
-                            >
+                            <button onClick={() => handleDemoAction(demo, 'attended')} disabled={isSaving}
+                              className="px-4 py-1.5 bg-[#059669] text-white text-xs font-medium rounded-lg disabled:opacity-60">
                               {isSaving ? 'Saving...' : 'Yes, Attended'}
                             </button>
-                            <button
-                              onClick={() => setActionState(p => ({ ...p, [demo.id]: null }))}
-                              className="px-3 py-1.5 text-xs text-[#64748B] hover:text-[#0F172A]"
-                            >
-                              Cancel
-                            </button>
+                            <button onClick={() => setActionState(p => ({ ...p, [demo.id]: null }))} className="px-3 py-1.5 text-xs text-[#64748B]">Cancel</button>
                           </div>
                         </div>
 
                       ) : action === 'no_show' ? (
-                        <div className="px-5 py-4 bg-red-50 border-t border-red-100 flex items-center justify-between">
-                          <p className="text-[13px] text-[#EF4444] font-medium">Confirm no show?</p>
+                        <div className="px-4 pb-4 bg-red-50 py-3 flex items-center justify-between">
+                          <p className="text-sm text-red-700 font-medium">❌ Confirm no show?</p>
                           <div className="flex gap-2">
-                            <button
-                              onClick={() => handleDemoAction(demo, 'no_show')}
-                              disabled={isSaving}
-                              className="px-4 py-1.5 bg-[#EF4444] text-white text-xs font-semibold rounded-lg disabled:opacity-60 hover:bg-[#DC2626]"
-                            >
+                            <button onClick={() => handleDemoAction(demo, 'no_show')} disabled={isSaving}
+                              className="px-4 py-1.5 bg-[#EF4444] text-white text-xs font-medium rounded-lg disabled:opacity-60">
                               {isSaving ? 'Saving...' : 'Confirm No Show'}
                             </button>
-                            <button
-                              onClick={() => setActionState(p => ({ ...p, [demo.id]: null }))}
-                              className="px-3 py-1.5 text-xs text-[#64748B] hover:text-[#0F172A]"
-                            >
-                              Cancel
-                            </button>
+                            <button onClick={() => setActionState(p => ({ ...p, [demo.id]: null }))} className="px-3 py-1.5 text-xs text-[#64748B]">Cancel</button>
                           </div>
                         </div>
 
                       ) : action === 'reschedule' ? (
-                        <div className="px-5 pb-5 pt-1 border-t border-[#E2E8F0] space-y-3">
-                          <p className="text-label text-[#94A3B8] mt-3">Reschedule Demo</p>
+                        <div className="px-4 pb-4 pt-2 bg-amber-50 border-t border-amber-100 space-y-3">
+                          <p className="text-xs font-semibold text-amber-800">Reschedule Demo</p>
 
+                          {/* New date/time */}
                           <div>
-                            <label className="block text-[11px] font-medium text-[#64748B] mb-1.5">
-                              New Date & Time <span className="text-red-500">*</span>
-                            </label>
+                            <label className="block text-[10px] font-medium text-amber-700 mb-1">New Date & Time <span className="text-red-500">*</span></label>
                             <input
                               type="datetime-local"
                               value={rescheduleDate[demo.id] ?? ''}
                               onChange={e => setRescheduleDate(p => ({ ...p, [demo.id]: e.target.value }))}
                               min={new Date().toISOString().slice(0, 16)}
-                              className="field"
+                              className="w-full px-3 py-1.5 text-xs border border-amber-200 bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400/20"
                             />
                           </div>
 
+                          {/* SDR Reassignment (optional) */}
                           <div>
-                            <label className="block text-[11px] font-medium text-[#64748B] mb-1.5">
-                              Reassign SDR{' '}
-                              <span className="text-[#94A3B8] font-normal">(optional — returns lead to SDR workspace)</span>
+                            <label className="block text-[10px] font-medium text-amber-700 mb-1">
+                              Reassign to SDR <span className="text-[10px] text-amber-500 font-normal">(optional — returns lead to SDR workspace)</span>
                             </label>
                             <select
                               value={newSdrId[demo.id] ?? ''}
                               onChange={e => setNewSdrId(p => ({ ...p, [demo.id]: e.target.value }))}
-                              className="field"
+                              className="w-full px-3 py-1.5 text-xs border border-amber-200 bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400/20"
                             >
-                              <option value="">Keep current SDR{demo.sdr?.name ? ` (${demo.sdr.name})` : ''}</option>
+                              <option value="">— Keep current SDR{demo.sdr?.name ? ` (${demo.sdr.name})` : ''} —</option>
                               {sdrs.map(s => (
                                 <option key={s.id} value={s.id}>{s.name}</option>
                               ))}
                             </select>
                           </div>
 
+                          {/* Closer Reassignment (optional) */}
                           <div>
-                            <label className="block text-[11px] font-medium text-[#64748B] mb-1.5">
-                              Reassign Closer{' '}
-                              <span className="text-[#94A3B8] font-normal">(optional — moves deal to their pipeline)</span>
+                            <label className="block text-[10px] font-medium text-amber-700 mb-1">
+                              Reassign to Closer <span className="text-[10px] text-amber-500 font-normal">(optional — moves deal to their pipeline)</span>
                             </label>
                             <select
                               value={newCloserId[demo.id] ?? ''}
                               onChange={e => setNewCloserId(p => ({ ...p, [demo.id]: e.target.value }))}
-                              className="field"
+                              className="w-full px-3 py-1.5 text-xs border border-amber-200 bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400/20"
                             >
-                              <option value="">Keep current Closer</option>
+                              <option value="">— Keep current Closer —</option>
                               {closers.map(c => (
                                 <option key={c.id} value={c.id}>{c.name}</option>
                               ))}
                             </select>
                           </div>
 
+                          {/* Action buttons */}
                           <div className="flex gap-2 items-center pt-1">
                             <button
                               onClick={() => handleReschedule(demo)}
                               disabled={isSaving || !rescheduleDate[demo.id]}
-                              className="btn-primary flex-1 disabled:opacity-60"
+                              className="flex-1 py-2 bg-amber-500 text-white text-xs font-semibold rounded-lg disabled:opacity-60"
                             >
                               {isSaving ? 'Saving...' : 'Confirm Reschedule'}
                             </button>
                             <button
                               onClick={() => setActionState(p => ({ ...p, [demo.id]: null }))}
-                              className="btn-ghost"
+                              className="px-3 py-2 text-xs text-[#64748B] border border-[#E2E8F0] rounded-lg bg-white"
                             >
                               Cancel
                             </button>

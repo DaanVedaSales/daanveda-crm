@@ -26,7 +26,7 @@ interface DealWithDetails {
 interface Column { stage: DealStage; deals: DealWithDetails[] }
 
 // Stages that are terminal — collapsible by default
-const TERMINAL_STAGES: DealStage[] = ['won', 'lost', 'ghosted']
+const TERMINAL_STAGES: DealStage[] = ['won', 'lost', 'ghosted', 'unqualified']
 
 // ── Skeleton card ──────────────────────────────────────────────────────────────
 function CardSkeleton() {
@@ -52,6 +52,7 @@ function DealCard({
   onProposalSent: () => void
 }) {
   const [markingProposal, setMarkingProposal] = useState(false)
+  const [markingUnqualified, setMarkingUnqualified] = useState(false)
   const daysInStage = Math.floor((Date.now() - new Date(deal.updated_at).getTime()) / 86400000)
   const isStale     = daysInStage > 7 && !TERMINAL_STAGES.includes(deal.stage)
   const stageColor  = DEAL_STAGE_COLORS[deal.stage]
@@ -66,6 +67,18 @@ function DealCard({
     })
     setMarkingProposal(false)
     onProposalSent()
+  }
+
+  async function handleUnqualifiedClick(e: React.MouseEvent) {
+    e.stopPropagation()
+    setMarkingUnqualified(true)
+    await fetch(`/api/deals/${deal.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stage: 'unqualified' }),
+    })
+    setMarkingUnqualified(false)
+    onProposalSent() // reuse refresh callback
   }
 
   const followUpLabel = deal.next_follow_up
@@ -139,16 +152,27 @@ function DealCard({
           </div>
         )}
 
-        {/* Proposal Sent inline button — demo_done only */}
-        {deal.stage === 'demo_done' && !deal.proposal_sent_at && (
-          <button
-            onClick={handleProposalClick}
-            disabled={markingProposal}
-            className="mt-2 w-full flex items-center justify-center gap-1.5 py-1.5 bg-[#F0F9FF] border border-[#BAE6FD] text-[#0284C7] text-[10px] font-semibold rounded-lg hover:bg-[#E0F2FE] disabled:opacity-50 transition-colors"
-          >
-            <Send className="w-2.5 h-2.5" strokeWidth={2} />
-            {markingProposal ? 'Saving…' : 'Mark Proposal Sent'}
-          </button>
+        {/* Quick-action buttons — demo_done only */}
+        {deal.stage === 'demo_done' && (
+          <div className="mt-2 flex gap-1.5">
+            {!deal.proposal_sent_at && (
+              <button
+                onClick={handleProposalClick}
+                disabled={markingProposal || markingUnqualified}
+                className="flex-1 flex items-center justify-center gap-1 py-1.5 bg-[#F0F9FF] border border-[#BAE6FD] text-[#0284C7] text-[10px] font-semibold rounded-lg hover:bg-[#E0F2FE] disabled:opacity-50 transition-colors"
+              >
+                <Send className="w-2.5 h-2.5" strokeWidth={2} />
+                {markingProposal ? 'Saving…' : 'Proposal Sent'}
+              </button>
+            )}
+            <button
+              onClick={handleUnqualifiedClick}
+              disabled={markingProposal || markingUnqualified}
+              className="flex-1 flex items-center justify-center gap-1 py-1.5 bg-amber-50 border border-amber-200 text-amber-700 text-[10px] font-semibold rounded-lg hover:bg-amber-100 disabled:opacity-50 transition-colors"
+            >
+              {markingUnqualified ? 'Saving…' : 'Unqualified'}
+            </button>
+          </div>
         )}
       </div>
     </div>
@@ -408,6 +432,14 @@ function DealPanel({ deal, onClose, onUpdate }: { deal: DealWithDetails; onClose
                 placeholder="Organisation billing name"
                 className="field"
               />
+            </div>
+          )}
+
+          {deal.stage === 'unqualified' && (
+            <div className="p-4 bg-amber-50 rounded-xl border border-amber-200">
+              <p className="text-[12px] text-[#92400E] leading-relaxed">
+                Marked as <span className="font-semibold">Unqualified</span> — the org attended the demo but wasn't a fit. This will be reflected in the SDR's lead quality metrics.
+              </p>
             </div>
           )}
 

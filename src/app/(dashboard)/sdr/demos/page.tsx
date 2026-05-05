@@ -84,25 +84,16 @@ export default function SDRDemosPage() {
 
   if (loading) {
     return (
-      <div className="flex-1 flex flex-col bg-[#F8FAFC]">
-        <TopBar title="My Demos" subtitle="Loading..." />
-        <div className="flex-1 p-6 space-y-3">
-          {[...Array(3)].map((_, i) => (
-            <div key={i} className="bg-white rounded-2xl border border-[#E2E8F0] p-5 space-y-3" style={{ boxShadow: '0 1px 4px rgba(15,23,42,0.06)' }}>
-              <div className="h-4 w-36 bg-[#F1F5F9] rounded skeleton" />
-              <div className="h-3 w-24 bg-[#F1F5F9] rounded skeleton" />
-              <div className="h-12 bg-[#F8FAFC] rounded-xl skeleton mt-2" />
-            </div>
-          ))}
-        </div>
+      <div className="flex-1 flex items-center justify-center">
+        <div className="w-6 h-6 border-2 border-[#1A56DB] border-t-transparent rounded-full animate-spin" />
       </div>
     )
   }
 
   return (
-    <div className="flex-1 flex flex-col bg-[#F8FAFC]">
+    <div className="flex-1 flex flex-col">
       <TopBar
-        title="My Demos"
+        title="Booked Demos"
         subtitle={`${demos.length} upcoming${needsReminder.length > 0 ? ` · ${needsReminder.length} reminder${needsReminder.length > 1 ? 's' : ''} due` : ''}`}
       />
 
@@ -110,31 +101,29 @@ export default function SDRDemosPage() {
 
         {/* Reminder alert banner */}
         {needsReminder.length > 0 && (
-          <div className="flex items-start gap-3 p-4 bg-[#FFFBEB] border border-[#FDE68A] rounded-2xl">
-            <AlertCircle className="w-4 h-4 text-[#B45309] shrink-0 mt-0.5" strokeWidth={2} />
+          <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+            <AlertCircle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
             <div>
-              <p className="text-[13px] font-semibold text-[#92400E]">
+              <p className="text-sm font-semibold text-amber-800">
                 {needsReminder.length} demo{needsReminder.length > 1 ? 's' : ''} need{needsReminder.length === 1 ? 's' : ''} a reminder today
               </p>
-              <p className="text-[12px] text-[#B45309] mt-0.5">
-                Reach out to the org before their demo — a quick call or message keeps the show rate high.
+              <p className="text-xs text-amber-600 mt-0.5">
+                Remind the organisation before their demo — a quick call or WhatsApp goes a long way.
               </p>
             </div>
           </div>
         )}
 
         {demos.length === 0 && (
-          <div className="bg-white rounded-2xl border border-[#E2E8F0] p-12 text-center" style={{ boxShadow: '0 1px 4px rgba(15,23,42,0.06)' }}>
-            <div className="w-10 h-10 rounded-xl bg-[#F1F5F9] flex items-center justify-center mx-auto mb-3">
-              <CalendarCheck className="w-5 h-5 text-[#94A3B8]" strokeWidth={1.5} />
-            </div>
-            <p className="text-[13px] font-medium text-[#374151]">No booked demos yet</p>
-            <p className="text-[11px] text-[#94A3B8] mt-1">Demos you book will appear here with reminder tracking.</p>
+          <div className="flex flex-col items-center justify-center py-20 text-[#94A3B8]">
+            <CalendarCheck className="w-12 h-12 mb-3 opacity-30" />
+            <p className="text-sm font-medium">No booked demos yet</p>
+            <p className="text-xs mt-1">Demos you book will appear here with reminder tracking.</p>
           </div>
         )}
 
         {overdueDemos.length > 0 && (
-          <DemoSection title="Overdue" demos={overdueDemos} onRemind={markReminder} reminding={reminding} urgent />
+          <DemoSection title="⚠️ Overdue (Demo date passed)" demos={overdueDemos} onRemind={markReminder} reminding={reminding} urgent />
         )}
         {todayDemos.length > 0 && (
           <DemoSection title="Today" demos={todayDemos} onRemind={markReminder} reminding={reminding} urgent />
@@ -165,11 +154,11 @@ function DemoSection({
 }) {
   return (
     <div>
-      <h2
-        className="text-label mb-3"
-        style={{ color: urgent ? '#B45309' : '#94A3B8' }}
-      >
-        {title} &middot; {demos.length}
+      <h2 className={cn(
+        'text-xs font-semibold uppercase tracking-widest mb-3',
+        urgent ? 'text-amber-600' : 'text-[#64748B]'
+      )}>
+        {title} ({demos.length})
       </h2>
       <div className="space-y-3">
         {demos.map(demo => <DemoCard key={demo.id} demo={demo} onRemind={onRemind} reminding={reminding} />)}
@@ -196,13 +185,10 @@ function DemoCard({ demo, onRemind, reminding }: {
     : `In ${days} days`
 
   return (
-    <div
-      className={cn(
-        'bg-white rounded-2xl border p-5',
-        isOverdue ? 'border-red-200' : isUrgent ? 'border-amber-200' : 'border-[#E2E8F0]'
-      )}
-      style={{ boxShadow: '0 1px 4px rgba(15,23,42,0.06)' }}
-    >
+    <div className={cn(
+      'bg-white rounded-xl border p-4 shadow-sm',
+      isOverdue ? 'border-red-200' : isUrgent ? 'border-amber-200' : 'border-[#E2E8F0]'
+    )}>
       <div className="flex items-start justify-between gap-3">
         {/* Left: org info */}
         <div className="flex-1 min-w-0">
@@ -260,9 +246,9 @@ function DemoCard({ demo, onRemind, reminding }: {
       </div>
 
       {/* SDR Summary snippet */}
-      <div className="mt-4 p-3.5 bg-[#F8FAFC] rounded-xl border border-[#F1F5F9]">
-        <p className="text-label text-[#94A3B8] mb-1.5">Your Summary for Closer</p>
-        <p className="text-[12px] text-[#64748B] leading-relaxed line-clamp-2">{demo.sdr_summary}</p>
+      <div className="mt-3 p-2.5 bg-[#F8FAFC] rounded-lg border border-[#F1F5F9]">
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8] mb-1">Your Summary for Closer</p>
+        <p className="text-xs text-[#64748B] line-clamp-2">{demo.sdr_summary}</p>
       </div>
     </div>
   )
