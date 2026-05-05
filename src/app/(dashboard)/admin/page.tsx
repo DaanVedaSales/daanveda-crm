@@ -15,7 +15,6 @@ interface SdrStat {
   user_id: string
   name: string
   role: 'sdr'
-  pip_status: string | null
   monthly_demo_target: number | null
   demos_booked: number
   demos_attended: number
@@ -32,7 +31,6 @@ interface CloserStat {
   user_id: string
   name: string
   role: 'closer'
-  pip_status: string | null
   monthly_revenue_target: number | null
   demos_done: number
   converted: number

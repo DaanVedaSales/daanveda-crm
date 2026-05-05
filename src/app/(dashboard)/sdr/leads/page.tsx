@@ -55,16 +55,31 @@ export default function SDRLeadsPage() {
   }
 
   if (loading) {
-    return <div className="flex-1 flex items-center justify-center">
-      <div className="w-6 h-6 border-2 border-[#1A56DB] border-t-transparent rounded-full animate-spin" />
-    </div>
+    return (
+      <div className="flex-1 flex flex-col">
+        <div className="h-14 bg-white border-b border-[#E8EDF3]" />
+        <div className="p-4 border-b border-[#E2E8F0] bg-white flex gap-2">
+          <div className="h-9 flex-1 bg-[#F1F5F9] rounded-lg skeleton" />
+          <div className="h-9 w-24 bg-[#F1F5F9] rounded-lg skeleton" />
+        </div>
+        <div className="flex-1 bg-[#F8FAFC]">
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="px-4 py-4 bg-white border-b border-[#F1F5F9] space-y-2">
+              <div className="h-3.5 w-36 bg-[#F1F5F9] rounded skeleton" />
+              <div className="h-3 w-24 bg-[#F1F5F9] rounded skeleton" />
+              <div className="h-5 w-20 bg-[#F1F5F9] rounded-full skeleton mt-1" />
+            </div>
+          ))}
+        </div>
+      </div>
+    )
   }
 
   return (
     <div className="flex-1 flex">
       {/* Lead list */}
       <div className={cn('flex flex-col transition-all', showPanel ? 'w-96' : 'flex-1')}>
-        <TopBar title="Assigned Leads" subtitle={`${filtered.length} leads`} />
+        <TopBar title="My Leads" subtitle={`${filtered.length} leads`} />
 
         <div className="p-4 border-b border-[#E2E8F0] bg-white flex gap-2">
           <div className="relative flex-1">
@@ -128,9 +143,17 @@ export default function SDRLeadsPage() {
             ))}
 
             {filtered.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-16 text-[#94A3B8]">
-                <p className="text-sm">No leads found</p>
-                {search && <p className="text-xs mt-1">Try a different search term</p>}
+              <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+                <div className="w-10 h-10 rounded-xl bg-[#F1F5F9] flex items-center justify-center mb-3">
+                  <svg className="w-5 h-5 text-[#94A3B8]" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 0 2-2h2a2 2 0 0 0 2 2" />
+                  </svg>
+                </div>
+                <p className="text-[13px] font-medium text-[#374151]">{search ? 'No leads match your search' : 'No leads in your queue'}</p>
+                {search
+                  ? <p className="text-[11px] text-[#94A3B8] mt-1">Try a different search term</p>
+                  : <p className="text-[11px] text-[#94A3B8] mt-1">Add a lead manually or wait for assignment</p>
+                }
               </div>
             )}
           </div>
@@ -428,8 +451,8 @@ function LeadDetailPanel({
                 </div>
                 <p className="text-xs text-[#64748B]">{c.designation}</p>
                 <div className="flex gap-3 mt-1.5 text-xs text-[#94A3B8]">
-                  {c.phone && <span>📞 {c.phone}</span>}
-                  {c.email && <span>✉️ {c.email}</span>}
+                  {c.phone && <span>{c.phone}</span>}
+                  {c.email && <span>{c.email}</span>}
                 </div>
               </div>
             ))}
@@ -507,7 +530,7 @@ function LogActivityModal({ leadId, onClose, onSuccess }: { leadId: string; onCl
           <div>
             <label className="block text-[10px] font-semibold uppercase tracking-widest text-[#64748B] mb-1">Outcome</label>
             <select value={outcome} onChange={e => setOutcome(e.target.value)} className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20">
-              {['Demo Booked','Not Interested','Call Again','Not Reachable','Other'].map(o => <option key={o}>{o}</option>)}
+              {['Not Interested','Call Again','Not Reachable','Other'].map(o => <option key={o}>{o}</option>)}
             </select>
           </div>
           <div>
@@ -600,17 +623,17 @@ function BookDemoModal({ lead, contacts, onClose, onSuccess }: { lead: LeadWithO
           <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8]">Organisation</p>
           <p className="font-semibold text-[#0F172A] text-sm">{org?.name}</p>
           <div className="flex flex-wrap gap-3 text-xs text-[#64748B]">
-            {org?.location && <span>📍 {org.location}</span>}
+            {org?.location && <span>{org.location}</span>}
             {org?.url && <a href={org.url} target="_blank" rel="noreferrer" className="text-[#1A56DB] hover:underline">{org.url}</a>}
-            {org?.annual_revenue && <span>💰 ₹{(org.annual_revenue/100000).toFixed(0)}L revenue</span>}
-            {org?.team_size && <span>👥 {org.team_size} people</span>}
+            {org?.annual_revenue && <span>₹{(org.annual_revenue/100000).toFixed(0)}L revenue</span>}
+            {org?.team_size && <span>{org.team_size} people</span>}
           </div>
           {primaryContact && (
             <div className="flex gap-3 text-xs text-[#64748B] pt-1 border-t border-[#E2E8F0] mt-1">
               <span className="font-medium text-[#0F172A]">KDM: {primaryContact.name}</span>
               {primaryContact.designation && <span>{primaryContact.designation}</span>}
-              {primaryContact.phone && <span>📞 {primaryContact.phone}</span>}
-              {primaryContact.email && <span>✉️ {primaryContact.email}</span>}
+              {primaryContact.phone && <span>{primaryContact.phone}</span>}
+              {primaryContact.email && <span>{primaryContact.email}</span>}
             </div>
           )}
         </div>
@@ -658,20 +681,21 @@ function BookDemoModal({ lead, contacts, onClose, onSuccess }: { lead: LeadWithO
             <label className="block text-[10px] font-semibold uppercase tracking-widest text-[#64748B] mb-1">Interest Signal</label>
             <div className="flex gap-2">
               {[
-                { value: 'hot', label: '🔥 Hot' },
-                { value: 'warm', label: '✨ Warm' },
-                { value: 'cold', label: '❄️ Cold' },
+                { value: 'hot', label: 'Hot', color: '#EF4444' },
+                { value: 'warm', label: 'Warm', color: '#F59E0B' },
+                { value: 'cold', label: 'Cold', color: '#64748B' },
               ].map(s => (
                 <button
                   key={s.value}
                   type="button"
                   onClick={() => setSignal(s.value)}
                   className={cn(
-                    'flex-1 py-1.5 text-xs font-medium rounded-lg border transition-colors',
+                    'flex-1 py-1.5 text-xs font-semibold rounded-lg border transition-colors',
                     signal === s.value
-                      ? 'bg-[#1A56DB] text-white border-[#1A56DB]'
-                      : 'border-[#E2E8F0] text-[#64748B] hover:border-[#1A56DB]/40'
+                      ? 'text-white border-transparent'
+                      : 'border-[#E2E8F0] text-[#64748B] hover:border-[#CBD5E1]'
                   )}
+                  style={signal === s.value ? { backgroundColor: s.color, borderColor: s.color } : {}}
                 >
                   {s.label}
                 </button>

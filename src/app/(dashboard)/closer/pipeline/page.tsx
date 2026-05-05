@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { KANBAN_STAGES, DEAL_STAGE_LABELS, DEAL_STAGE_COLORS } from '@/lib/constants'
 import { formatCurrency } from '@/lib/utils'
 import type { DealStage } from '@/types/database'
-import { X, Send, Trash2, IndianRupee, Calendar, GripVertical, Plus, ChevronDown } from 'lucide-react'
+import { X, Send, Trash2, IndianRupee, Calendar, GripVertical, Plus } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface DealWithDetails {
@@ -25,20 +25,6 @@ interface DealWithDetails {
 
 interface Column { stage: DealStage; deals: DealWithDetails[] }
 
-// Stages that are terminal — collapsible by default
-const TERMINAL_STAGES: DealStage[] = ['won', 'lost', 'ghosted', 'unqualified']
-
-// ── Skeleton card ──────────────────────────────────────────────────────────────
-function CardSkeleton() {
-  return (
-    <div className="bg-white rounded-xl border border-[#E2E8F0] p-3.5 space-y-2.5">
-      <div className="skeleton h-3 w-3/4 rounded" />
-      <div className="skeleton h-4 w-1/2 rounded" />
-      <div className="skeleton h-2.5 w-full rounded" />
-    </div>
-  )
-}
-
 // ── Draggable Card ─────────────────────────────────────────────────────────────
 function DealCard({
   deal,
@@ -49,140 +35,84 @@ function DealCard({
   deal: DealWithDetails
   onDragStart: (dealId: string) => void
   onClick: (deal: DealWithDetails) => void
-  onProposalSent: () => void
+  onProposalSent: (dealId: string) => void
 }) {
   const [markingProposal, setMarkingProposal] = useState(false)
-  const [markingUnqualified, setMarkingUnqualified] = useState(false)
   const daysInStage = Math.floor((Date.now() - new Date(deal.updated_at).getTime()) / 86400000)
-  const isStale     = daysInStage > 7 && !TERMINAL_STAGES.includes(deal.stage)
-  const stageColor  = DEAL_STAGE_COLORS[deal.stage]
+  const isStale = daysInStage > 7 && !['won', 'lost', 'ghosted'].includes(deal.stage)
 
   async function handleProposalClick(e: React.MouseEvent) {
-    e.stopPropagation()
+    e.stopPropagation() // don't open the side panel
     setMarkingProposal(true)
     await fetch(`/api/deals/${deal.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ proposal_sent_at: new Date().toISOString(), stage: 'follow_up' }),
+      body: JSON.stringify({
+        proposal_sent_at: new Date().toISOString(),
+        stage: 'follow_up',
+      }),
     })
     setMarkingProposal(false)
-    onProposalSent()
+    onProposalSent(deal.id)
   }
-
-  async function handleUnqualifiedClick(e: React.MouseEvent) {
-    e.stopPropagation()
-    setMarkingUnqualified(true)
-    await fetch(`/api/deals/${deal.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ stage: 'unqualified' }),
-    })
-    setMarkingUnqualified(false)
-    onProposalSent() // reuse refresh callback
-  }
-
-  const followUpLabel = deal.next_follow_up
-    ? `FU ${new Date(deal.next_follow_up).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`
-    : `${daysInStage}d`
 
   return (
     <div
       draggable
       onDragStart={() => onDragStart(deal.id)}
       onClick={() => onClick(deal)}
-      className={cn(
-        'relative bg-white rounded-xl border cursor-grab active:cursor-grabbing',
-        'hover:shadow-raised transition-all duration-150 group select-none overflow-hidden',
-        isStale ? 'border-[#FCD34D]' : 'border-[#E2E8F0]',
-      )}
-      style={{ boxShadow: '0 1px 3px rgba(15,23,42,0.05)' }}
+      className={`bg-white rounded-lg border p-3 shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md transition-all group select-none ${
+        isStale ? 'border-[#F59E0B]' : 'border-[#E2E8F0]'
+      }`}
     >
-      {/* Stage color left border */}
-      <div
-        className="absolute left-0 top-0 bottom-0 w-[3px]"
-        style={{ backgroundColor: stageColor }}
-      />
-
-      <div className="pl-3.5 pr-3 py-3">
-        {/* Drag handle + stale badge */}
-        <div className="flex items-start justify-between gap-1 mb-1.5">
-          <p className="font-medium text-[13px] text-[#0F172A] leading-snug line-clamp-2 flex-1">
-            {deal.organization?.name}
-          </p>
-          <div className="flex items-center gap-1 shrink-0">
+      <div className="flex items-start gap-1.5">
+        <GripVertical className="w-3.5 h-3.5 text-[#CBD5E1] mt-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between gap-1 mb-1">
+            <p className="font-medium text-xs text-[#0F172A] leading-tight line-clamp-2">{deal.organization?.name}</p>
             {isStale && (
-              <span className="text-[9px] font-semibold text-[#92400E] bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">
-                STALE
-              </span>
+              <span className="shrink-0 text-[9px] font-semibold text-[#F59E0B] bg-amber-50 px-1.5 py-0.5 rounded ml-1">STALE</span>
             )}
-            <GripVertical
-              className="w-3.5 h-3.5 text-[#CBD5E1] opacity-0 group-hover:opacity-100 transition-opacity"
-              strokeWidth={1.5}
-            />
           </div>
-        </div>
-
-        {/* Deal value */}
-        <p
-          className={cn(
-            'text-[15px] font-bold leading-none mb-2',
-            deal.deal_value ? 'text-[#0F172A]' : 'text-[#94A3B8]',
-          )}
-          style={{ fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.01em' }}
-        >
-          {deal.deal_value ? formatCurrency(deal.deal_value) : 'Set value'}
-        </p>
-
-        {/* Meta row */}
-        <div className="flex items-center justify-between">
-          <span className="text-[11px] text-[#94A3B8] truncate">
-            {deal.organization?.location ?? '—'}
-          </span>
-          <span className="text-[10px] text-[#94A3B8] shrink-0 ml-1 tabular">
-            {followUpLabel}
-          </span>
-        </div>
-
-        {/* Proposal sent badge */}
-        {deal.proposal_sent_at && (
-          <div className="mt-2 flex items-center gap-1">
-            <span className="text-[10px] text-[#0891B2] border border-[#BAE6FD] px-2 py-0.5 rounded-full bg-cyan-50 font-medium">
-              Proposal sent
+          <p className={`text-sm font-bold ${deal.deal_value ? 'text-[#0F172A]' : 'text-[#94A3B8]'}`}>
+            {deal.deal_value ? formatCurrency(deal.deal_value) : 'No value set'}
+          </p>
+          <div className="flex items-center justify-between mt-1.5 text-[10px] text-[#94A3B8]">
+            <span className="truncate">{deal.organization?.location ?? '—'}</span>
+            <span className="shrink-0 ml-1">
+              {deal.next_follow_up
+                ? `FU: ${new Date(deal.next_follow_up).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`
+                : `${daysInStage}d`}
             </span>
           </div>
-        )}
 
-        {/* Quick-action buttons — demo_done only */}
-        {deal.stage === 'demo_done' && (
-          <div className="mt-2 flex gap-1.5">
-            {!deal.proposal_sent_at && (
-              <button
-                onClick={handleProposalClick}
-                disabled={markingProposal || markingUnqualified}
-                className="flex-1 flex items-center justify-center gap-1 py-1.5 bg-[#F0F9FF] border border-[#BAE6FD] text-[#0284C7] text-[10px] font-semibold rounded-lg hover:bg-[#E0F2FE] disabled:opacity-50 transition-colors"
-              >
-                <Send className="w-2.5 h-2.5" strokeWidth={2} />
-                {markingProposal ? 'Saving…' : 'Proposal Sent'}
-              </button>
-            )}
+          {/* Proposal badge (already sent) */}
+          {deal.proposal_sent_at && (
+            <div className="mt-1.5">
+              <span className="text-[9px] text-[#0891B2] bg-cyan-50 px-1.5 py-0.5 rounded-full font-medium">✓ Proposal sent</span>
+            </div>
+          )}
+
+          {/* Proposal Sent button — only on demo_done cards where proposal not yet sent */}
+          {deal.stage === 'demo_done' && !deal.proposal_sent_at && (
             <button
-              onClick={handleUnqualifiedClick}
-              disabled={markingProposal || markingUnqualified}
-              className="flex-1 flex items-center justify-center gap-1 py-1.5 bg-amber-50 border border-amber-200 text-amber-700 text-[10px] font-semibold rounded-lg hover:bg-amber-100 disabled:opacity-50 transition-colors"
+              onClick={handleProposalClick}
+              disabled={markingProposal}
+              className="mt-2 w-full flex items-center justify-center gap-1 py-1 bg-cyan-50 border border-cyan-200 text-[#0891B2] text-[10px] font-semibold rounded-lg hover:bg-cyan-100 disabled:opacity-50 transition-colors"
             >
-              {markingUnqualified ? 'Saving…' : 'Unqualified'}
+              <Send className="w-2.5 h-2.5" />
+              {markingProposal ? 'Saving...' : 'Mark Proposal Sent →'}
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   )
 }
 
-// ── Kanban Column ──────────────────────────────────────────────────────────────
+// ── Droppable Column ───────────────────────────────────────────────────────────
 function KanbanColumn({
   stage, deals, draggingId, onDrop, onDragStart, onCardClick, onProposalSent,
-  collapsed, onToggleCollapse,
 }: {
   stage: DealStage
   deals: DealWithDetails[]
@@ -190,77 +120,30 @@ function KanbanColumn({
   onDrop: (stage: DealStage) => void
   onDragStart: (id: string) => void
   onCardClick: (deal: DealWithDetails) => void
-  onProposalSent: () => void
-  collapsed: boolean
-  onToggleCollapse: () => void
+  onProposalSent: (dealId: string) => void
 }) {
   const [isOver, setIsOver] = useState(false)
-  const color    = DEAL_STAGE_COLORS[stage]
+  const color = DEAL_STAGE_COLORS[stage]
   const colValue = deals.reduce((s, d) => s + (d.deal_value ?? 0), 0)
-  const isTerminal = TERMINAL_STAGES.includes(stage)
-
-  if (collapsed) {
-    return (
-      <div className="flex-shrink-0 w-12 flex flex-col items-center">
-        <button
-          onClick={onToggleCollapse}
-          className="flex flex-col items-center gap-2 w-full py-3 rounded-xl hover:bg-white/80 transition-colors group"
-          title={`${DEAL_STAGE_LABELS[stage]} (${deals.length})`}
-        >
-          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
-          <div
-            className="writing-mode-vertical text-[10px] font-semibold text-[#94A3B8] group-hover:text-[#64748B] transition-colors"
-            style={{ writingMode: 'vertical-rl', textOrientation: 'mixed', letterSpacing: '0.05em' }}
-          >
-            {DEAL_STAGE_LABELS[stage]}
-          </div>
-          <span
-            className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
-            style={{ backgroundColor: color + '18', color }}
-          >
-            {deals.length}
-          </span>
-        </button>
-      </div>
-    )
-  }
 
   return (
-    <div className="flex-shrink-0 w-56 flex flex-col">
-      {/* Column header */}
-      <div className="flex items-center justify-between mb-2.5 px-0.5">
+    <div className="flex-shrink-0 w-60 flex flex-col">
+      <div className="flex items-center justify-between mb-2 px-1">
         <div className="flex items-center gap-2">
           <div className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
-          <span className="text-[12px] font-semibold text-[#0F172A] tracking-tight">
-            {DEAL_STAGE_LABELS[stage]}
-          </span>
-          <span
-            className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
-            style={{ backgroundColor: color + '18', color }}
-          >
-            {deals.length}
-          </span>
+          <span className="text-xs font-semibold text-[#0F172A]">{DEAL_STAGE_LABELS[stage]}</span>
         </div>
-        {isTerminal && (
-          <button
-            onClick={onToggleCollapse}
-            className="p-0.5 text-[#94A3B8] hover:text-[#64748B] transition-colors"
-            title="Collapse column"
-          >
-            <ChevronDown className="w-3.5 h-3.5" strokeWidth={1.75} />
-          </button>
-        )}
+        <span className="text-xs text-[#94A3B8] bg-[#F1F5F9] px-1.5 py-0.5 rounded-full">{deals.length}</span>
       </div>
 
-      {/* Drop zone */}
       <div
         onDragOver={e => { e.preventDefault(); setIsOver(true) }}
         onDragLeave={() => setIsOver(false)}
         onDrop={() => { setIsOver(false); onDrop(stage) }}
-        className="flex-1 min-h-[80px] rounded-xl p-2 space-y-2 transition-all duration-150 scrollbar-none"
+        className="flex-1 min-h-24 rounded-xl p-2 space-y-2 transition-all"
         style={{
-          backgroundColor: isOver ? `${color}12` : `${color}06`,
-          outline: isOver ? `2px solid ${color}50` : 'none',
+          backgroundColor: `${color}08`,
+          outline: isOver ? `2px solid ${color}` : 'none',
           outlineOffset: '2px',
         }}
       >
@@ -275,195 +158,194 @@ function KanbanColumn({
         ))}
         {deals.length === 0 && (
           <div
-            className="flex items-center justify-center h-14 rounded-lg border-2 border-dashed transition-colors"
-            style={{ borderColor: isOver ? color : '#E2E8F0' }}
+            className="flex items-center justify-center h-16 rounded-lg border-2 border-dashed transition-colors"
+            style={isOver ? { borderColor: color } : { borderColor: '#E2E8F0' }}
           >
-            <p className="text-[11px] text-[#CBD5E1]">Drop here</p>
+            <p className="text-xs text-[#CBD5E1]">Drop here</p>
           </div>
         )}
       </div>
 
-      {/* Column total */}
-      {deals.length > 0 && colValue > 0 && (
-        <p
-          className="text-center text-[10px] text-[#94A3B8] mt-1.5 tabular"
-          style={{ fontVariantNumeric: 'tabular-nums' }}
-        >
-          {formatCurrency(colValue)}
-        </p>
+      {deals.length > 0 && (
+        <p className="text-center text-[10px] text-[#94A3B8] mt-1.5">{formatCurrency(colValue)}</p>
       )}
     </div>
   )
 }
 
 // ── Deal Detail Panel ──────────────────────────────────────────────────────────
-function DealPanel({ deal, onClose, onUpdate }: { deal: DealWithDetails; onClose: () => void; onUpdate: () => void }) {
-  const [dealValue,   setDealValue]   = useState(deal.deal_value?.toString() ?? '')
+function DealPanel({
+  deal, onClose, onUpdate,
+}: {
+  deal: DealWithDetails
+  onClose: () => void
+  onUpdate: () => void
+}) {
+  const [dealValue, setDealValue] = useState(deal.deal_value?.toString() ?? '')
   const [followUpDate, setFollowUpDate] = useState(deal.next_follow_up ?? '')
-  const [lossReason,  setLossReason]  = useState(deal.loss_reason ?? '')
+  const [lossReason, setLossReason] = useState(deal.loss_reason ?? '')
   const [billingName, setBillingName] = useState(deal.billing_name ?? '')
-  const [saving,      setSaving]      = useState(false)
-  const [removing,    setRemoving]    = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [removingFromBoard, setRemovingFromBoard] = useState(false)
 
   async function save() {
     setSaving(true)
     const payload: Record<string, unknown> = {}
-    if (dealValue)    payload.deal_value   = parseInt(dealValue)
+    if (dealValue) payload.deal_value = parseInt(dealValue)
     if (followUpDate) payload.next_follow_up = followUpDate
-    if (lossReason)   payload.loss_reason  = lossReason
-    if (billingName)  payload.billing_name = billingName
-    await fetch(`/api/deals/${deal.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-    setSaving(false); onUpdate(); onClose()
+    if (lossReason) payload.loss_reason = lossReason
+    if (billingName) payload.billing_name = billingName
+
+    await fetch(`/api/deals/${deal.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    setSaving(false)
+    onUpdate()
+    onClose()
   }
 
   async function removeFromBoard() {
-    setRemoving(true)
-    await fetch(`/api/deals/${deal.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ removed_from_board: true }) })
-    setRemoving(false); onUpdate(); onClose()
+    setRemovingFromBoard(true)
+    await fetch(`/api/deals/${deal.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ removed_from_board: true }),
+    })
+    setRemovingFromBoard(false)
+    onUpdate()
+    onClose()
   }
 
-  const stageColor = DEAL_STAGE_COLORS[deal.stage]
-  const demoDateStr = deal.demo?.demo_date
-    ? new Date(deal.demo.demo_date).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true })
+  const demoDate = deal.demo?.demo_date
+    ? new Date(deal.demo.demo_date).toLocaleDateString('en-IN', {
+        weekday: 'short', day: 'numeric', month: 'short',
+        hour: '2-digit', minute: '2-digit', hour12: true,
+      })
     : null
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
-      <div className="absolute inset-0 bg-[#0F172A]/40 backdrop-blur-[2px]" onClick={onClose} />
-      <div className="relative w-full max-w-[380px] bg-white h-full shadow-panel flex flex-col animate-slide-in-right">
+      <div className="absolute inset-0 bg-black/30" onClick={onClose} />
+      <div className="relative w-full max-w-sm bg-white h-full shadow-2xl flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="px-5 py-4 border-b border-[#F1F5F9] flex items-start justify-between">
-          <div className="flex-1 min-w-0 pr-3">
-            <p className="font-semibold text-[15px] text-[#0F172A] tracking-tight truncate">{deal.organization?.name}</p>
-            {deal.organization?.location && (
-              <p className="text-[11px] text-[#94A3B8] mt-0.5">{deal.organization.location}</p>
-            )}
-            <div className="flex items-center gap-2 mt-2">
-              <span
-                className="text-[10px] font-semibold px-2.5 py-1 rounded-full text-white"
-                style={{ backgroundColor: stageColor }}
-              >
+        <div className="px-5 py-4 border-b border-[#E2E8F0] flex items-start justify-between">
+          <div>
+            <p className="font-semibold text-[#0F172A]">{deal.organization?.name}</p>
+            <p className="text-xs text-[#94A3B8] mt-0.5">{deal.organization?.location}</p>
+            <div className="flex items-center gap-1.5 mt-1.5">
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: DEAL_STAGE_COLORS[deal.stage] }}>
                 {DEAL_STAGE_LABELS[deal.stage]}
               </span>
               {deal.proposal_sent_at && (
-                <span className="text-[10px] text-[#0891B2] border border-[#BAE6FD] px-2 py-0.5 rounded-full bg-cyan-50 font-medium">
-                  Proposal sent
-                </span>
+                <span className="text-[10px] text-[#0891B2] bg-cyan-50 px-1.5 py-0.5 rounded-full font-medium">✓ Proposal sent</span>
               )}
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 rounded-lg hover:bg-[#F1F5F9] text-[#94A3B8] hover:text-[#374151] transition-colors"
-          >
-            <X className="w-4 h-4" strokeWidth={1.75} />
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-[#F1F5F9] text-[#94A3B8]">
+            <X className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto scrollbar-thin p-5 space-y-5">
-
+        <div className="flex-1 overflow-y-auto p-5 space-y-5">
           {/* SDR Context */}
           {deal.demo?.sdr_summary && (
-            <div className="p-4 bg-[#F8FAFC] rounded-xl border border-[#F1F5F9]">
-              <p className="text-label text-[#94A3B8] mb-2">
-                SDR Notes{deal.demo.sdr?.name ? ` · ${deal.demo.sdr.name}` : ''}
+            <div className="p-3 bg-[#F8FAFC] rounded-lg border border-[#F1F5F9]">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8] mb-1.5">
+                SDR Notes{deal.demo.sdr?.name ? ` — ${deal.demo.sdr.name}` : ''}
               </p>
-              <p className="text-[12px] text-[#374151] leading-relaxed">{deal.demo.sdr_summary}</p>
+              <p className="text-xs text-[#0F172A] leading-relaxed">{deal.demo.sdr_summary}</p>
               {deal.demo.sdr_interest_signal && (
-                <p className="text-[11px] text-[#64748B] mt-2">
-                  Signal: <span className="font-medium capitalize">{deal.demo.sdr_interest_signal}</span>
-                </p>
+                <p className="text-[10px] text-[#64748B] mt-1.5">Signal: <span className="font-medium capitalize">{deal.demo.sdr_interest_signal}</span></p>
               )}
-              {demoDateStr && (
-                <p className="text-[11px] text-[#94A3B8] mt-1">Demo: {demoDateStr}</p>
+              {demoDate && (
+                <p className="text-[10px] text-[#64748B] mt-0.5">Demo: {demoDate}</p>
               )}
             </div>
           )}
 
           {/* Deal Value */}
           <div>
-            <label className="text-label text-[#64748B] mb-1.5 block">Deal Value (₹)</label>
+            <label className="text-xs font-semibold text-[#64748B] uppercase tracking-widest mb-1.5 block">Deal Value (₹)</label>
             <div className="relative">
-              <IndianRupee className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#94A3B8]" strokeWidth={1.75} />
+              <IndianRupee className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#94A3B8]" />
               <input
                 type="number"
                 value={dealValue}
                 onChange={e => setDealValue(e.target.value)}
                 placeholder="e.g. 50000"
-                className="field pl-8"
+                className="w-full pl-8 pr-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20 focus:border-[#1A56DB]"
               />
             </div>
           </div>
 
           {/* Next Follow-up */}
           <div>
-            <label className="text-label text-[#64748B] mb-1.5 block">Next Follow-up</label>
+            <label className="text-xs font-semibold text-[#64748B] uppercase tracking-widest mb-1.5 block">Next Follow-up Date</label>
             <div className="relative">
-              <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#94A3B8]" strokeWidth={1.75} />
+              <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#94A3B8]" />
               <input
                 type="date"
                 value={followUpDate}
                 onChange={e => setFollowUpDate(e.target.value)}
-                className="field pl-8"
+                className="w-full pl-8 pr-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20"
               />
             </div>
           </div>
 
+          {/* Loss Reason */}
           {deal.stage === 'lost' && (
             <div>
-              <label className="text-label text-[#EF4444] mb-1.5 block">Loss Reason</label>
+              <label className="text-xs font-semibold text-[#EF4444] uppercase tracking-widest mb-1.5 block">Loss Reason *</label>
               <textarea
                 value={lossReason}
                 onChange={e => setLossReason(e.target.value)}
                 placeholder="Why was this deal lost?"
                 rows={3}
-                className="field resize-none"
+                className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#EF4444]/20 focus:border-[#EF4444] resize-none"
               />
             </div>
           )}
 
+          {/* Billing Name */}
           {deal.stage === 'won' && (
             <div>
-              <label className="text-label text-[#059669] mb-1.5 block">Billing Name</label>
+              <label className="text-xs font-semibold text-[#059669] uppercase tracking-widest mb-1.5 block">Billing Name *</label>
               <input
                 type="text"
                 value={billingName}
                 onChange={e => setBillingName(e.target.value)}
                 placeholder="Organisation billing name"
-                className="field"
+                className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#059669]/20 focus:border-[#059669]"
               />
             </div>
           )}
 
-          {deal.stage === 'unqualified' && (
-            <div className="p-4 bg-amber-50 rounded-xl border border-amber-200">
-              <p className="text-[12px] text-[#92400E] leading-relaxed">
-                Marked as <span className="font-semibold">Unqualified</span> — the org attended the demo but wasn't a fit. This will be reflected in the SDR's lead quality metrics.
-              </p>
-            </div>
-          )}
-
+          {/* Ghosted — Remove from board */}
           {deal.stage === 'ghosted' && (
-            <div className="p-4 bg-[#FEF2F2] rounded-xl border border-[#FECACA]">
-              <p className="text-[12px] text-[#374151] mb-3 leading-relaxed">
-                This org has gone dark. Removing it from the board keeps your pipeline clean — the record stays in your database.
-              </p>
+            <div className="p-3 bg-red-50 rounded-lg border border-red-100">
+              <p className="text-xs text-[#64748B] mb-2">Org has gone dark. Remove from board to declutter — the record stays in your database.</p>
               <button
                 onClick={removeFromBoard}
-                disabled={removing}
-                className="btn-danger text-xs py-2"
+                disabled={removingFromBoard}
+                className="flex items-center gap-1.5 px-4 py-2 border border-[#EF4444] text-[#EF4444] text-xs font-medium rounded-lg hover:bg-red-50 disabled:opacity-60 transition-colors"
               >
-                <Trash2 className="w-3.5 h-3.5" strokeWidth={1.75} />
-                {removing ? 'Removing…' : 'Remove from Board'}
+                <Trash2 className="w-3.5 h-3.5" />
+                {removingFromBoard ? 'Removing...' : 'Remove from Board'}
               </button>
             </div>
           )}
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-4 border-t border-[#F1F5F9]">
-          <button onClick={save} disabled={saving} className="btn-primary w-full py-2.5 text-sm">
-            {saving ? 'Saving…' : 'Save Changes'}
+        <div className="px-5 py-4 border-t border-[#E2E8F0]">
+          <button
+            onClick={save}
+            disabled={saving}
+            className="w-full py-2.5 bg-[#1A56DB] text-white text-sm font-semibold rounded-xl hover:bg-[#1e40af] disabled:opacity-60 transition-colors"
+          >
+            {saving ? 'Saving...' : 'Save Changes'}
           </button>
         </div>
       </div>
@@ -472,108 +354,208 @@ function DealPanel({ deal, onClose, onUpdate }: { deal: DealWithDetails; onClose
 }
 
 // ── Add Deal Modal ─────────────────────────────────────────────────────────────
-function AddDealModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
-  const [orgName,       setOrgName]       = useState('')
-  const [location,      setLocation]      = useState('')
-  const [kdmName,       setKdmName]       = useState('')
-  const [kdmPhone,      setKdmPhone]      = useState('')
-  const [kdmDesignation, setKdmDesig]     = useState('')
-  const [dealValue,     setDealValue]     = useState('')
-  const [demoStatus,    setDemoStatus]    = useState<'tbd' | 'scheduled' | 'done'>('tbd')
-  const [demoDate,      setDemoDate]      = useState('')
-  const [sdrSummary,    setSdrSummary]    = useState('')
-  const [saving,        setSaving]        = useState(false)
-  const [error,         setError]         = useState('')
+function AddDealModal({
+  onClose,
+  onSuccess,
+}: {
+  onClose: () => void
+  onSuccess: () => void
+}) {
+  const [orgName, setOrgName] = useState('')
+  const [location, setLocation] = useState('')
+  const [kdmName, setKdmName] = useState('')
+  const [kdmPhone, setKdmPhone] = useState('')
+  const [kdmDesignation, setKdmDesignation] = useState('')
+  const [dealValue, setDealValue] = useState('')
+  const [demoStatus, setDemoStatus] = useState<'tbd' | 'scheduled' | 'done'>('tbd')
+  const [demoDate, setDemoDate] = useState('')
+  const [sdrSummary, setSdrSummary] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
 
   async function submit(e: React.FormEvent) {
-    e.preventDefault(); setError('')
-    if (demoStatus === 'scheduled' && !demoDate) { setError('Please select a demo date and time.'); return }
+    e.preventDefault()
+    setError('')
+    if (demoStatus === 'scheduled' && !demoDate) {
+      setError('Please pick a demo date & time.')
+      return
+    }
     setSaving(true)
     const res = await fetch('/api/deals/manual', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ org_name: orgName, location, kdm_name: kdmName, kdm_phone: kdmPhone, kdm_designation: kdmDesignation, deal_value: dealValue || null, demo_status: demoStatus, demo_date: demoDate || null, sdr_summary: sdrSummary }),
+      body: JSON.stringify({
+        org_name: orgName,
+        location,
+        kdm_name: kdmName,
+        kdm_phone: kdmPhone,
+        kdm_designation: kdmDesignation,
+        deal_value: dealValue || null,
+        demo_status: demoStatus,
+        demo_date: demoDate || null,
+        sdr_summary: sdrSummary,
+      }),
     })
-    if (res.ok) onSuccess()
-    else { const d = await res.json(); setError(d.error ?? 'Something went wrong') }
+    if (res.ok) {
+      onSuccess()
+    } else {
+      const d = await res.json()
+      setError(d.error ?? 'Something went wrong')
+    }
     setSaving(false)
   }
 
-  const fieldCls = 'field'
-
   return (
-    <div className="fixed inset-0 bg-[#0F172A]/40 backdrop-blur-[2px] z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-panel w-full max-w-lg max-h-[90vh] overflow-y-auto scrollbar-thin animate-slide-up">
-        <div className="px-6 py-5 border-b border-[#F1F5F9] flex items-center justify-between">
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-start justify-between mb-5">
           <div>
-            <h3 className="text-[15px] font-semibold text-[#0F172A] tracking-tight">Add Deal</h3>
-            <p className="text-[11px] text-[#94A3B8] mt-0.5">Creates org, KDM, and deal in your pipeline</p>
+            <h3 className="font-semibold text-[#0F172A] text-base">Add Deal Manually</h3>
+            <p className="text-xs text-[#64748B] mt-0.5">Creates org → KDM → deal in your pipeline</p>
           </div>
-          <button onClick={onClose} className="p-2 rounded-lg hover:bg-[#F1F5F9] text-[#94A3B8] transition-colors">
-            <X className="w-4 h-4" strokeWidth={1.75} />
-          </button>
+          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#64748B] text-xl leading-none">×</button>
         </div>
 
-        <form onSubmit={submit} className="p-6 space-y-5">
+        <form onSubmit={submit} className="space-y-4">
           {/* Organisation */}
-          <section className="space-y-3">
-            <p className="text-label text-[#64748B]">Organisation</p>
-            <input required value={orgName} onChange={e => setOrgName(e.target.value)} placeholder="Organisation name" className={fieldCls} />
-            <input value={location} onChange={e => setLocation(e.target.value)} placeholder="City, State" className={fieldCls} />
-          </section>
+          <div className="space-y-3">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8]">Organisation</p>
+            <div>
+              <label className="block text-xs text-[#64748B] mb-1">Name <span className="text-red-500">*</span></label>
+              <input
+                required
+                value={orgName}
+                onChange={e => setOrgName(e.target.value)}
+                placeholder="Org name"
+                className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-[#64748B] mb-1">Location</label>
+              <input
+                value={location}
+                onChange={e => setLocation(e.target.value)}
+                placeholder="City, State"
+                className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20"
+              />
+            </div>
+          </div>
 
           {/* KDM */}
-          <section className="space-y-3 pt-4 border-t border-[#F1F5F9]">
-            <p className="text-label text-[#64748B]">Key Decision Maker</p>
-            <input required value={kdmName} onChange={e => setKdmName(e.target.value)} placeholder="Full name" className={fieldCls} />
+          <div className="space-y-3 pt-2 border-t border-[#F1F5F9]">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8]">Key Decision Maker</p>
             <div className="grid grid-cols-2 gap-3">
-              <input value={kdmPhone} onChange={e => setKdmPhone(e.target.value)} placeholder="Phone" className={fieldCls} />
-              <input value={kdmDesignation} onChange={e => setKdmDesig(e.target.value)} placeholder="Designation" className={fieldCls} />
+              <div className="col-span-2">
+                <label className="block text-xs text-[#64748B] mb-1">Name <span className="text-red-500">*</span></label>
+                <input
+                  required
+                  value={kdmName}
+                  onChange={e => setKdmName(e.target.value)}
+                  placeholder="Full name"
+                  className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-[#64748B] mb-1">Phone</label>
+                <input
+                  value={kdmPhone}
+                  onChange={e => setKdmPhone(e.target.value)}
+                  placeholder="+91 98765 43210"
+                  className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-[#64748B] mb-1">Designation</label>
+                <input
+                  value={kdmDesignation}
+                  onChange={e => setKdmDesignation(e.target.value)}
+                  placeholder="CEO, CFO..."
+                  className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20"
+                />
+              </div>
             </div>
-          </section>
+          </div>
 
-          {/* Demo Status */}
-          <section className="space-y-3 pt-4 border-t border-[#F1F5F9]">
-            <p className="text-label text-[#64748B]">Demo Status</p>
+          {/* Demo status */}
+          <div className="space-y-3 pt-2 border-t border-[#F1F5F9]">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8]">Demo Status</p>
             <div className="flex gap-2">
-              {([['tbd', 'TBD'], ['scheduled', 'Scheduled'], ['done', 'Already Done']] as const).map(([v, lbl]) => (
+              {([
+                { value: 'tbd', label: '📅 TBD' },
+                { value: 'scheduled', label: '🕐 Scheduled' },
+                { value: 'done', label: '✅ Already Done' },
+              ] as const).map(opt => (
                 <button
-                  key={v} type="button" onClick={() => setDemoStatus(v)}
-                  className={cn('flex-1 py-2 text-[12px] font-medium rounded-xl border transition-all duration-150',
-                    demoStatus === v
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setDemoStatus(opt.value)}
+                  className={cn(
+                    'flex-1 py-1.5 text-xs font-medium rounded-lg border transition-colors',
+                    demoStatus === opt.value
                       ? 'bg-[#1A56DB] text-white border-[#1A56DB]'
-                      : 'border-[#E2E8F0] text-[#64748B] hover:border-[#CBD5E1]'
+                      : 'border-[#E2E8F0] text-[#64748B] hover:border-[#1A56DB]/40'
                   )}
                 >
-                  {lbl}
+                  {opt.label}
                 </button>
               ))}
             </div>
             {demoStatus === 'scheduled' && (
-              <input
-                type="datetime-local"
-                value={demoDate}
-                onChange={e => setDemoDate(e.target.value)}
-                min={new Date().toISOString().slice(0, 16)}
-                className={fieldCls}
-              />
+              <div>
+                <label className="block text-xs text-[#64748B] mb-1">Demo Date & Time <span className="text-red-500">*</span></label>
+                <input
+                  type="datetime-local"
+                  value={demoDate}
+                  onChange={e => setDemoDate(e.target.value)}
+                  min={new Date().toISOString().slice(0, 16)}
+                  className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20"
+                />
+              </div>
             )}
-          </section>
+          </div>
 
-          {/* Deal Details */}
-          <section className="space-y-3 pt-4 border-t border-[#F1F5F9]">
-            <p className="text-label text-[#64748B]">Deal Details</p>
-            <input type="number" value={dealValue} onChange={e => setDealValue(e.target.value)} placeholder="Estimated value (₹)" className={fieldCls} />
-            <textarea value={sdrSummary} onChange={e => setSdrSummary(e.target.value)} rows={3} placeholder="Context, pain points, what you know about this org…" className={`${fieldCls} resize-none`} />
-          </section>
+          {/* Deal value + context */}
+          <div className="space-y-3 pt-2 border-t border-[#F1F5F9]">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8]">Deal Details</p>
+            <div>
+              <label className="block text-xs text-[#64748B] mb-1">Estimated Deal Value (₹)</label>
+              <input
+                type="number"
+                value={dealValue}
+                onChange={e => setDealValue(e.target.value)}
+                placeholder="e.g. 75000"
+                className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-[#64748B] mb-1">Context / Notes</label>
+              <textarea
+                value={sdrSummary}
+                onChange={e => setSdrSummary(e.target.value)}
+                rows={3}
+                placeholder="How did you find them? Key pain points, budget signals, what to expect..."
+                className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20 resize-none"
+              />
+            </div>
+          </div>
 
-          {error && <p className="text-[12px] text-[#EF4444] bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</p>}
+          {error && <p className="text-xs text-red-500">{error}</p>}
 
-          <div className="flex gap-3 pt-1">
-            <button type="submit" disabled={saving || !orgName.trim() || !kdmName.trim()} className="btn-primary flex-1 py-2.5 text-sm">
-              {saving ? 'Adding…' : 'Add to Pipeline'}
+          <div className="flex gap-2 pt-1">
+            <button
+              type="submit"
+              disabled={saving || !orgName.trim() || !kdmName.trim()}
+              className="flex-1 py-2.5 bg-[#1A56DB] text-white text-sm font-medium rounded-xl hover:bg-[#1e40af] disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+            >
+              {saving ? 'Adding...' : 'Add to Pipeline →'}
             </button>
-            <button type="button" onClick={onClose} className="btn-ghost py-2.5 px-5 text-sm">Cancel</button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="py-2.5 px-4 border border-[#E2E8F0] text-sm text-[#64748B] rounded-xl hover:bg-[#F8FAFC]"
+            >
+              Cancel
+            </button>
           </div>
         </form>
       </div>
@@ -583,13 +565,11 @@ function AddDealModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
 
 // ── Main Pipeline Page ─────────────────────────────────────────────────────────
 export default function PipelinePage() {
-  const [columns,      setColumns]     = useState<Column[]>([])
-  const [loading,      setLoading]     = useState(true)
-  const [draggingId,   setDraggingId]  = useState<string | null>(null)
+  const [columns, setColumns] = useState<Column[]>([])
+  const [loading, setLoading] = useState(true)
+  const [draggingId, setDraggingId] = useState<string | null>(null)
   const [selectedDeal, setSelectedDeal] = useState<DealWithDetails | null>(null)
-  const [showAddDeal,  setShowAddDeal] = useState(false)
-  // Terminal stages collapsed by default
-  const [collapsedStages, setCollapsedStages] = useState<Set<DealStage>>(new Set(TERMINAL_STAGES))
+  const [showAddDeal, setShowAddDeal] = useState(false)
   const supabase = createClient()
 
   useEffect(() => { fetchPipeline() }, [])
@@ -598,95 +578,121 @@ export default function PipelinePage() {
     const { data: user } = await supabase.auth.getUser()
     const { data: profile } = await supabase.from('users').select('id').eq('auth_id', user.user!.id).single()
     if (!profile) return
-    const res  = await fetch(`/api/deals?closer_id=${profile.id}`)
+
+    const res = await fetch(`/api/deals?closer_id=${profile.id}`)
     const deals: DealWithDetails[] = await res.json()
+
     const visible = Array.isArray(deals) ? deals.filter(d => !d.removed_from_board) : []
-    setColumns(KANBAN_STAGES.map(stage => ({ stage, deals: visible.filter(d => d.stage === stage) })))
+    const grouped = KANBAN_STAGES.map(stage => ({
+      stage,
+      deals: visible.filter(d => d.stage === stage),
+    }))
+    setColumns(grouped)
     setLoading(false)
   }
 
-  function toggleCollapse(stage: DealStage) {
-    setCollapsedStages(prev => {
-      const next = new Set(prev)
-      next.has(stage) ? next.delete(stage) : next.add(stage)
-      return next
-    })
+  // Called when Proposal Sent is clicked on a card — optimistically remove from demo_done column
+  function handleProposalSentOnCard(dealId: string) {
+    fetchPipeline()
   }
 
   async function handleDrop(targetStage: DealStage) {
     if (!draggingId) return
+
     const allDeals = columns.flatMap(c => c.deals)
     const deal = allDeals.find(d => d.id === draggingId)
     if (!deal || deal.stage === targetStage) { setDraggingId(null); return }
 
     if (targetStage === 'lost') {
-      const reason = prompt('Loss reason (required):')
+      const reason = prompt('Loss reason is required (the record stays in your database):')
       if (!reason?.trim()) { setDraggingId(null); return }
-      await fetch(`/api/deals/${draggingId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ stage: targetStage, loss_reason: reason }) })
+      await fetch(`/api/deals/${draggingId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stage: targetStage, loss_reason: reason }),
+      })
     } else if (targetStage === 'won') {
-      const billing = prompt('Billing name (required):')
+      const billing = prompt('Billing name is required:')
       if (!billing?.trim()) { setDraggingId(null); return }
-      await fetch(`/api/deals/${draggingId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ stage: targetStage, billing_name: billing }) })
+      await fetch(`/api/deals/${draggingId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stage: targetStage, billing_name: billing }),
+      })
     } else {
-      await fetch(`/api/deals/${draggingId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ stage: targetStage }) })
+      await fetch(`/api/deals/${draggingId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stage: targetStage }),
+      })
     }
-    setDraggingId(null); fetchPipeline()
+
+    setDraggingId(null)
+    fetchPipeline()
   }
 
-  const allDeals   = columns.flatMap(c => c.deals)
-  const totalValue = allDeals.filter(d => !TERMINAL_STAGES.includes(d.stage)).reduce((s, d) => s + (d.deal_value ?? 0), 0)
+  if (loading) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="w-6 h-6 border-2 border-[#1A56DB] border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
+
+  const allDeals = columns.flatMap(c => c.deals)
+  const totalValue = allDeals
+    .filter(d => !['lost', 'ghosted'].includes(d.stage))
+    .reduce((s, d) => s + (d.deal_value ?? 0), 0)
 
   return (
-    <div className="flex-1 flex flex-col bg-[#F8FAFC]">
+    <div className="flex-1 flex flex-col">
       <TopBar
-        title="Pipeline"
-        subtitle={loading ? 'Loading…' : `${allDeals.length} deals · ${formatCurrency(totalValue)} in play`}
-        actions={
-          <button onClick={() => setShowAddDeal(true)} className="btn-primary py-2 px-3.5 text-xs gap-1.5">
-            <Plus className="w-3.5 h-3.5" strokeWidth={2.5} />
-            Add Deal
-          </button>
-        }
+        title="Active Pipeline"
+        subtitle={`${allDeals.length} deals · ${formatCurrency(totalValue)} pipeline value`}
       />
 
-      {loading ? (
-        <div className="flex gap-3 p-4 overflow-hidden">
-          {[0, 1, 2, 3].map(i => (
-            <div key={i} className="flex-shrink-0 w-56">
-              <div className="skeleton h-4 w-28 rounded mb-3" />
-              <div className="space-y-2">
-                {[0, 1, 2].map(j => <CardSkeleton key={j} />)}
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div
-          className="flex-1 flex gap-3 p-4 overflow-x-auto scrollbar-thin"
-          onDragEnd={() => setDraggingId(null)}
+      {/* Add deal button */}
+      <div className="px-4 pt-3 pb-1 flex justify-end">
+        <button
+          onClick={() => setShowAddDeal(true)}
+          className="flex items-center gap-1.5 px-3.5 py-2 bg-[#1A56DB] text-white text-xs font-semibold rounded-lg hover:bg-[#1e40af] transition-colors shadow-sm"
         >
-          {columns.map(col => (
-            <KanbanColumn
-              key={col.stage}
-              stage={col.stage}
-              deals={col.deals}
-              draggingId={draggingId}
-              onDrop={handleDrop}
-              onDragStart={id => setDraggingId(id)}
-              onCardClick={deal => setSelectedDeal(deal)}
-              onProposalSent={fetchPipeline}
-              collapsed={collapsedStages.has(col.stage)}
-              onToggleCollapse={() => toggleCollapse(col.stage)}
-            />
-          ))}
-        </div>
-      )}
+          <Plus className="w-3.5 h-3.5" />
+          Add Deal
+        </button>
+      </div>
+
+      <div
+        className="flex-1 flex gap-3 p-4 overflow-x-auto"
+        onDragEnd={() => setDraggingId(null)}
+      >
+        {columns.map(col => (
+          <KanbanColumn
+            key={col.stage}
+            stage={col.stage}
+            deals={col.deals}
+            draggingId={draggingId}
+            onDrop={handleDrop}
+            onDragStart={id => setDraggingId(id)}
+            onCardClick={deal => setSelectedDeal(deal)}
+            onProposalSent={handleProposalSentOnCard}
+          />
+        ))}
+      </div>
 
       {selectedDeal && (
-        <DealPanel deal={selectedDeal} onClose={() => setSelectedDeal(null)} onUpdate={fetchPipeline} />
+        <DealPanel
+          deal={selectedDeal}
+          onClose={() => setSelectedDeal(null)}
+          onUpdate={fetchPipeline}
+        />
       )}
+
       {showAddDeal && (
-        <AddDealModal onClose={() => setShowAddDeal(false)} onSuccess={() => { setShowAddDeal(false); fetchPipeline() }} />
+        <AddDealModal
+          onClose={() => setShowAddDeal(false)}
+          onSuccess={() => { setShowAddDeal(false); fetchPipeline() }}
+        />
       )}
     </div>
   )

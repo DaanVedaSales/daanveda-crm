@@ -53,24 +53,19 @@ export async function GET(request: Request) {
   const supabase = createServiceClient()
 
   // Fetch all active SDRs and Closers with targets + names
-  const { data: members } = await supabase
+  const { data: members, error: membersError } = await supabase
     .from('users')
-    .select('id, name, role, monthly_demo_target, monthly_revenue_target, monthly_base_salary, pip_status')
+    .select('id, name, role, monthly_demo_target, monthly_revenue_target, monthly_base_salary')
     .in('role', ['sdr', 'closer'])
     .eq('is_active', true)
 
-  if (!members || members.length === 0) {
-    return NextResponse.json({ sdrs: [], closers: [] })
+  if (membersError) {
+    console.error('Stats API members query error:', membersError.message)
+    return NextResponse.json({ error: membersError.message }, { status: 500 })
   }
 
-  // ── Helper: build date filter for a query ─────────────────────────────────
-  function applyDateFilter<T extends object>(
-    query: ReturnType<typeof supabase.from<string, T>['select']>,
-    column: string
-  ) {
-    if (rangeStart) query = query.gte(column, rangeStart)
-    if (rangeEnd) query = query.lte(column, rangeEnd)
-    return query
+  if (!members || members.length === 0) {
+    return NextResponse.json({ sdrs: [], closers: [] })
   }
 
   const sdrResults = await Promise.all(
@@ -163,7 +158,6 @@ export async function GET(request: Request) {
         user_id: sdr.id,
         name: sdr.name,
         role: 'sdr' as const,
-        pip_status: sdr.pip_status,
         monthly_demo_target: sdr.monthly_demo_target,
         // Metrics
         demos_booked: totalDemos,
@@ -259,7 +253,6 @@ export async function GET(request: Request) {
         user_id: closer.id,
         name: closer.name,
         role: 'closer' as const,
-        pip_status: closer.pip_status,
         monthly_revenue_target: closer.monthly_revenue_target,
         // Metrics
         demos_done: demosDone ?? 0,
