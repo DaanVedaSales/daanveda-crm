@@ -63,7 +63,6 @@ export const INTEREST_SIGNAL_COLORS: Record<InterestSignal, string> = {
 export const DEAL_STAGE_LABELS: Record<DealStage, string> = {
   demo_scheduled: 'Demo Scheduled',
   demo_done: 'Demo Done',
-  unqualified: 'Unqualified',
   proposal_sent: 'Proposal Sent',
   follow_up: 'Follow Up',
   negotiation: 'Negotiation',
@@ -77,7 +76,6 @@ export const DEAL_STAGE_LABELS: Record<DealStage, string> = {
 export const DEAL_STAGE_COLORS: Record<DealStage, string> = {
   demo_scheduled: '#7C3AED',
   demo_done: '#1A56DB',
-  unqualified: '#D97706',
   proposal_sent: '#0891B2',
   follow_up: '#F59E0B',
   negotiation: '#EA580C',
@@ -90,7 +88,7 @@ export const DEAL_STAGE_COLORS: Record<DealStage, string> = {
 
 // Kanban columns — proposal_sent is now a button action, not a column
 export const KANBAN_STAGES: DealStage[] = [
-  'demo_scheduled', 'demo_done', 'follow_up', 'negotiation', 'won', 'lost', 'ghosted', 'unqualified'
+  'demo_scheduled', 'demo_done', 'follow_up', 'negotiation', 'won', 'lost', 'ghosted'
 ]
 
 // ─── Activity Channels ───────────────────────────────────────────────────────
@@ -138,16 +136,16 @@ export const ADMIN_NAV = [
 
 export const SDR_NAV = [
   { href: '/sdr', label: 'Dashboard', icon: 'LayoutDashboard' },
-  { href: '/sdr/leads', label: 'My Leads', icon: 'ClipboardList' },
+  { href: '/sdr/leads', label: 'Assigned Leads', icon: 'ClipboardList' },
   { href: '/sdr/followups', label: 'Follow-ups', icon: 'Clock' },
-  { href: '/sdr/demos', label: 'My Demos', icon: 'CalendarCheck' },
+  { href: '/sdr/demos', label: 'Booked Demos', icon: 'CalendarCheck' },
 ]
 
 export const CLOSER_NAV = [
   { href: '/closer', label: 'Dashboard', icon: 'LayoutDashboard' },
-  { href: '/closer/pipeline', label: 'Pipeline', icon: 'Kanban' },
-  { href: '/closer/today', label: 'Upcoming Demos', icon: 'Calendar' },
-  { href: '/closer/past', label: 'Deal History', icon: 'History' },
+  { href: '/closer/pipeline', label: 'Active Pipeline', icon: 'Kanban' },
+  { href: '/closer/today', label: "Today's Actions", icon: 'Calendar' },
+  { href: '/closer/past', label: 'Past Context', icon: 'History' },
 ]
 
 // ─── SQL Score Rubric ────────────────────────────────────────────────────────

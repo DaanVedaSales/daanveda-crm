@@ -38,12 +38,7 @@ export async function POST(req: NextRequest) {
     const {
       name, url, location, annual_revenue, team_size, thematic_areas,
       age_years, linkedin_url, sql_score_label,
-      // KDM1
-      kdm_name, kdm_phone, kdm_email, kdm_designation, kdm_linkedin,
-      // KDM2
-      kdm2_name, kdm2_phone, kdm2_email, kdm2_designation, kdm2_linkedin,
-      // KDM3
-      kdm3_name, kdm3_phone, kdm3_email, kdm3_designation, kdm3_linkedin,
+      kdm_name, kdm_phone, kdm_email, kdm_designation,
     } = row
 
     // Org name is the only required field
@@ -93,7 +88,7 @@ export async function POST(req: NextRequest) {
 
     if (orgError) { errors.push(`${cleanName}: ${orgError.message}`); continue }
 
-    // Insert KDM1 (primary contact)
+    // Insert KDM contact if name provided
     if (kdm_name) {
       await supabase.from('contacts').insert({
         org_id: org.id,
@@ -101,34 +96,7 @@ export async function POST(req: NextRequest) {
         designation: kdm_designation ? String(kdm_designation).slice(0, 100) : null,
         phone: kdm_phone ? String(kdm_phone).slice(0, 20) : null,
         email: kdm_email ? String(kdm_email).slice(0, 255) : null,
-        linkedin_url: kdm_linkedin ? String(kdm_linkedin).slice(0, 500) : null,
         is_primary: true,
-      })
-    }
-
-    // Insert KDM2 (secondary contact)
-    if (kdm2_name) {
-      await supabase.from('contacts').insert({
-        org_id: org.id,
-        name: String(kdm2_name).slice(0, 255),
-        designation: kdm2_designation ? String(kdm2_designation).slice(0, 100) : null,
-        phone: kdm2_phone ? String(kdm2_phone).slice(0, 20) : null,
-        email: kdm2_email ? String(kdm2_email).slice(0, 255) : null,
-        linkedin_url: kdm2_linkedin ? String(kdm2_linkedin).slice(0, 500) : null,
-        is_primary: false,
-      })
-    }
-
-    // Insert KDM3 (tertiary contact)
-    if (kdm3_name) {
-      await supabase.from('contacts').insert({
-        org_id: org.id,
-        name: String(kdm3_name).slice(0, 255),
-        designation: kdm3_designation ? String(kdm3_designation).slice(0, 100) : null,
-        phone: kdm3_phone ? String(kdm3_phone).slice(0, 20) : null,
-        email: kdm3_email ? String(kdm3_email).slice(0, 255) : null,
-        linkedin_url: kdm3_linkedin ? String(kdm3_linkedin).slice(0, 500) : null,
-        is_primary: false,
       })
     }
 

@@ -13,8 +13,8 @@ export async function GET(req: NextRequest) {
     .from('deals')
     .select(`
       *,
-      organization:organizations(id, name, location, annual_revenue, team_size, thematic_areas, linkedin_url, url),
-      demo:demos(id, demo_date, pain_point, demo_expectation, sdr_summary, sdr_interest_signal, sdr:users!demos_sdr_id_fkey(id, name))
+      organization:organizations(id, name, location, annual_revenue, team_size),
+      demo:demos(id, demo_date, sdr_summary, sdr_interest_signal, sdr:users!demos_sdr_id_fkey(id, name))
     `)
     .order('updated_at', { ascending: false })
 
