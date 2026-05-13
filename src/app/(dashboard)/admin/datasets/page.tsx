@@ -6,26 +6,41 @@ import { formatDate } from '@/lib/utils'
 import { Upload, Plus, FileText, Table2, X, Download } from 'lucide-react'
 import type { Dataset } from '@/types/database'
 
-// The 13 database fields we accept in uploads
+// The 24 database fields we accept in uploads
 const DB_FIELDS = [
-  { value: 'name',            label: 'Org Name',          required: true },
-  { value: 'sql_score_label', label: 'SQL Score' },
-  { value: 'url',             label: 'Website' },
-  { value: 'location',        label: 'Location' },
-  { value: 'annual_revenue',  label: 'Annual Revenue (₹)' },
-  { value: 'team_size',       label: 'Team Size' },
-  { value: 'age_years',       label: 'Age (years)' },
-  { value: 'thematic_areas',  label: 'Thematic Areas' },
-  { value: 'linkedin_url',    label: 'LinkedIn URL' },
-  { value: 'kdm_name',        label: 'KDM Name' },
-  { value: 'kdm_phone',       label: 'KDM Phone' },
-  { value: 'kdm_email',       label: 'KDM Email' },
-  { value: 'kdm_designation', label: 'KDM Designation' },
+  // ── Organisation ─────────────────────────────────────
+  { value: 'name',             label: 'Org Name',           required: true },
+  { value: 'sql_score_label',  label: 'SQL Score' },
+  { value: 'url',              label: 'Org Website' },
+  { value: 'location',         label: 'Location' },
+  { value: 'annual_revenue',   label: 'Annual Revenue (₹)' },
+  { value: 'team_size',        label: 'Team Size' },
+  { value: 'age_years',        label: 'Age (years)' },
+  { value: 'thematic_areas',   label: 'Thematic Areas' },
+  { value: 'linkedin_url',     label: 'Org LinkedIn' },
+  // ── Primary KDM ──────────────────────────────────────
+  { value: 'kdm_name',         label: 'KDM1 Name' },
+  { value: 'kdm_phone',        label: 'KDM1 Phone' },
+  { value: 'kdm_email',        label: 'KDM1 Email' },
+  { value: 'kdm_designation',  label: 'KDM1 Designation' },
+  { value: 'kdm_linkedin',     label: 'KDM1 LinkedIn' },
+  // ── Secondary KDM ────────────────────────────────────
+  { value: 'kdm2_name',        label: 'KDM2 Name' },
+  { value: 'kdm2_phone',       label: 'KDM2 Phone' },
+  { value: 'kdm2_email',       label: 'KDM2 Email' },
+  { value: 'kdm2_designation', label: 'KDM2 Designation' },
+  { value: 'kdm2_linkedin',    label: 'KDM2 LinkedIn' },
+  // ── Tertiary KDM ─────────────────────────────────────
+  { value: 'kdm3_name',        label: 'KDM3 Name' },
+  { value: 'kdm3_phone',       label: 'KDM3 Phone' },
+  { value: 'kdm3_email',       label: 'KDM3 Email' },
+  { value: 'kdm3_designation', label: 'KDM3 Designation' },
+  { value: 'kdm3_linkedin',    label: 'KDM3 LinkedIn' },
 ]
 
-const SAMPLE_CSV = `name,sql_score,url,location,annual_revenue,team_size,age_years,thematic_areas,linkedin_url,kdm_name,kdm_phone,kdm_email,kdm_designation
-Greenpeace India,High,https://greenpeace.in,Mumbai,5000000,25,8,"Environment, Climate",https://linkedin.com/company/greenpeace-india,Ravi Kumar,9876543210,ravi@greenpeace.in,Director
-CRY India,Medium,https://cry.org,Delhi,8000000,40,30,"Child Rights, Education",https://linkedin.com/company/cry-india,Priya Sharma,9123456789,priya@cry.org,Head of Partnerships`
+const SAMPLE_CSV = `name,sql_score,url,location,annual_revenue,team_size,age_years,thematic_areas,linkedin_url,kdm_name,kdm_phone,kdm_email,kdm_designation,kdm_linkedin,kdm2_name,kdm2_phone,kdm2_email,kdm2_designation,kdm2_linkedin,kdm3_name,kdm3_phone,kdm3_email,kdm3_designation,kdm3_linkedin
+Greenpeace India,High,https://greenpeace.in,Mumbai,5000000,25,8,"Environment, Climate",https://linkedin.com/company/greenpeace-india,Ravi Kumar,9876543210,ravi@greenpeace.in,Director,https://linkedin.com/in/ravikumar,Sunita Rao,9988776655,sunita@greenpeace.in,Manager,https://linkedin.com/in/sunitarao,,,,,
+CRY India,Medium,https://cry.org,Delhi,8000000,40,30,"Child Rights, Education",https://linkedin.com/company/cry-india,Priya Sharma,9123456789,priya@cry.org,Head of Partnerships,https://linkedin.com/in/priyasharma,,,,,,,,,`
 
 // ── CSV Parser (handles commas inside quoted fields) ──────────────────────────
 function parseCSVText(text: string): { headers: string[]; rows: Record<string, string>[] } {
@@ -75,7 +90,7 @@ function autoMapHeaders(headers: string[]): Record<string, string> {
 }
 
 // ── Spreadsheet Paste Grid ────────────────────────────────────────────────────
-const DEFAULT_COLS = DB_FIELDS.length  // always matches the number of DB fields (13)
+const DEFAULT_COLS = DB_FIELDS.length  // always matches the number of DB fields (24)
 const DEFAULT_ROWS = 100
 
 function PasteGrid({
@@ -88,12 +103,110 @@ function PasteGrid({
   const [cells, setCells] = useState<string[][]>(
     Array(DEFAULT_ROWS).fill(null).map(() => Array(DEFAULT_COLS).fill(''))
   )
+  const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set())
+  const lastSelectedRow = useRef<number | null>(null)
   const gridRef = useRef<HTMLDivElement>(null)
 
-  function handlePaste(e: React.ClipboardEvent<HTMLDivElement>, startRow: number, startCol: number) {
-    e.preventDefault()
+  // ── Row number click: toggle / shift-range select ─────────────────────────
+  function handleRowNumberClick(ri: number, e: React.MouseEvent) {
+    if (e.shiftKey && lastSelectedRow.current !== null) {
+      const from = Math.min(lastSelectedRow.current, ri)
+      const to   = Math.max(lastSelectedRow.current, ri)
+      setSelectedRows(prev => {
+        const next = new Set(prev)
+        for (let r = from; r <= to; r++) next.add(r)
+        return next
+      })
+    } else {
+      setSelectedRows(prev => {
+        const next = new Set(prev)
+        next.has(ri) ? next.delete(ri) : next.add(ri)
+        return next
+      })
+      lastSelectedRow.current = ri
+    }
+  }
+
+  // ── Keyboard shortcuts on the grid container ──────────────────────────────
+  function handleGridKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    const isMac = navigator.platform.toUpperCase().includes('MAC')
+    const mod   = isMac ? e.metaKey : e.ctrlKey
+
+    // Delete / Backspace — clear selected rows
+    if ((e.key === 'Delete' || e.key === 'Backspace') && selectedRows.size > 0) {
+      // Only fire if focus is NOT inside an input (let inputs handle their own delete)
+      if ((e.target as HTMLElement).tagName === 'INPUT') return
+      e.preventDefault()
+      setCells(prev => {
+        const next = prev.map(r => [...r])
+        selectedRows.forEach(ri => { next[ri] = Array(colCount).fill('') })
+        return next
+      })
+      return
+    }
+
+    if (!mod) return
+
+    // Cmd/Ctrl+C — copy selected rows as TSV
+    if (e.key === 'c' && selectedRows.size > 0) {
+      e.preventDefault()
+      const tsv = [...selectedRows].sort((a, b) => a - b)
+        .map(ri => cells[ri].join('\t'))
+        .join('\n')
+      navigator.clipboard.writeText(tsv).catch(() => {})
+      return
+    }
+
+    // Cmd/Ctrl+X — cut: copy then clear
+    if (e.key === 'x' && selectedRows.size > 0) {
+      e.preventDefault()
+      const tsv = [...selectedRows].sort((a, b) => a - b)
+        .map(ri => cells[ri].join('\t'))
+        .join('\n')
+      navigator.clipboard.writeText(tsv).catch(() => {})
+      setCells(prev => {
+        const next = prev.map(r => [...r])
+        selectedRows.forEach(ri => { next[ri] = Array(colCount).fill('') })
+        return next
+      })
+      return
+    }
+
+    // Cmd/Ctrl+V — paste clipboard starting at first selected row (or row 0)
+    if (e.key === 'v') {
+      e.preventDefault()
+      const startRow = selectedRows.size > 0
+        ? Math.min(...selectedRows)
+        : 0
+      navigator.clipboard.readText().then(text => {
+        const pastedRows = text.split('\n').map(r => r.split('\t'))
+        setCells(prev => {
+          const next = prev.map(r => [...r])
+          pastedRows.forEach((row, ri) => {
+            row.forEach((val, ci) => {
+              const tr = startRow + ri
+              const tc = ci
+              if (tr < next.length && tc < colCount) {
+                next[tr][tc] = val.trim().replace(/\r/g, '')
+              }
+            })
+          })
+          return next
+        })
+      }).catch(() => {})
+      return
+    }
+  }
+
+  // ── Per-cell paste (Excel copy→paste directly into a cell) ────────────────
+  function handleCellPaste(e: React.ClipboardEvent<HTMLInputElement>, startRow: number, startCol: number) {
+    // If rows are selected and paste target isn't in a selected row, use regular cell paste
+    // Otherwise fall through to normal single-cell paste
     const text = e.clipboardData.getData('text')
-    const pastedRows = text.split('\n').map(r => r.split('\t'))
+    const lines = text.split('\n').filter(l => l !== '')
+    if (lines.length <= 1 && !text.includes('\t')) return // single value, let input handle it
+    e.preventDefault()
+    const pastedRows = lines.map(r => r.split('\t'))
     setCells(prev => {
       const next = prev.map(r => [...r])
       pastedRows.forEach((row, ri) => {
@@ -122,7 +235,6 @@ function PasteGrid({
   }
 
   function buildRows() {
-    // Build rows from grid, only include cols that have a header mapped
     const mappedCols = headers
       .map((h, i) => ({ field: h, colIdx: i }))
       .filter(c => c.field !== '')
@@ -146,17 +258,31 @@ function PasteGrid({
     onRowsReady(rows)
   }
 
+  const selCount = selectedRows.size
+
   return (
     <div className="space-y-3">
-      <p className="text-xs text-[#64748B]">
-        Assign column headers using the dropdowns, then paste your data from Excel or Google Sheets directly into the cells.
-        Tip: copy a range in Sheets/Excel and paste into any cell — it will fill automatically.
-      </p>
-      <div className="overflow-x-auto border border-[#E2E8F0] rounded-xl">
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-[#64748B]">
+          Assign column headers, then paste data from Excel/Sheets into any cell.
+          Click row numbers to select · Shift+click for range · Del to clear · ⌘C/X/V for clipboard ops.
+        </p>
+        {selCount > 0 && (
+          <span className="shrink-0 ml-3 text-[11px] font-medium text-[#1A56DB] bg-blue-50 border border-blue-100 px-2.5 py-1 rounded-full">
+            {selCount} row{selCount > 1 ? 's' : ''} selected
+          </span>
+        )}
+      </div>
+      <div
+        ref={gridRef}
+        className="overflow-x-auto border border-[#E2E8F0] rounded-xl outline-none"
+        tabIndex={0}
+        onKeyDown={handleGridKeyDown}
+      >
         <table className="text-xs border-collapse w-full min-w-max">
           <thead>
             <tr className="bg-[#F1F5F9]">
-              <td className="w-8 px-2 py-1.5 text-[#94A3B8] text-center border-r border-b border-[#E2E8F0]">#</td>
+              <td className="w-8 px-2 py-1.5 text-[#94A3B8] text-center border-r border-b border-[#E2E8F0] select-none">#</td>
               {Array(colCount).fill(null).map((_, ci) => (
                 <td key={ci} className="min-w-[140px] border-r border-b border-[#E2E8F0] p-0">
                   <select
@@ -174,26 +300,56 @@ function PasteGrid({
             </tr>
           </thead>
           <tbody>
-            {cells.map((row, ri) => (
-              <tr key={ri} className="hover:bg-[#F8FAFC]">
-                <td className="px-2 py-1 text-[#CBD5E1] text-center border-r border-b border-[#F1F5F9] select-none">{ri + 1}</td>
-                {row.map((cell, ci) => (
-                  <td key={ci} className="border-r border-b border-[#F1F5F9] p-0">
-                    <input
-                      value={cell}
-                      onChange={e => setCell(ri, ci, e.target.value)}
-                      onPaste={e => handlePaste(e, ri, ci)}
-                      className="w-full px-2 py-1 text-xs bg-transparent focus:outline-none focus:bg-blue-50 min-w-[140px]"
-                      placeholder={ri === 0 ? (DB_FIELDS.find(f => f.value === headers[ci])?.label ?? '') : ''}
-                    />
+            {cells.map((row, ri) => {
+              const isSelected = selectedRows.has(ri)
+              return (
+                <tr
+                  key={ri}
+                  className={isSelected ? 'bg-blue-50' : 'hover:bg-[#F8FAFC]'}
+                >
+                  <td
+                    onClick={e => handleRowNumberClick(ri, e)}
+                    className={`px-2 py-1 text-center border-r border-b border-[#F1F5F9] select-none cursor-pointer transition-colors ${
+                      isSelected
+                        ? 'bg-[#1A56DB] text-white font-semibold'
+                        : 'text-[#CBD5E1] hover:bg-[#E2E8F0] hover:text-[#64748B]'
+                    }`}
+                  >
+                    {ri + 1}
                   </td>
-                ))}
-              </tr>
-            ))}
+                  {row.map((cell, ci) => (
+                    <td key={ci} className={`border-r border-b border-[#F1F5F9] p-0 ${isSelected ? 'bg-blue-50' : ''}`}>
+                      <input
+                        value={cell}
+                        onChange={e => setCell(ri, ci, e.target.value)}
+                        onPaste={e => handleCellPaste(e, ri, ci)}
+                        className="w-full px-2 py-1 text-xs bg-transparent focus:outline-none focus:bg-blue-100 min-w-[140px]"
+                        placeholder={ri === 0 ? (DB_FIELDS.find(f => f.value === headers[ci])?.label ?? '') : ''}
+                      />
+                    </td>
+                  ))}
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       </div>
-      <div className="flex justify-end">
+      <div className="flex items-center justify-between">
+        {selCount > 0 ? (
+          <button
+            onClick={() => {
+              setCells(prev => {
+                const next = prev.map(r => [...r])
+                selectedRows.forEach(ri => { next[ri] = Array(colCount).fill('') })
+                return next
+              })
+              setSelectedRows(new Set())
+            }}
+            className="px-4 py-1.5 text-xs font-medium text-[#EF4444] border border-red-200 rounded-lg hover:bg-red-50 transition-colors"
+          >
+            Clear {selCount} selected row{selCount > 1 ? 's' : ''}
+          </button>
+        ) : <div />}
         <button
           onClick={buildRows}
           className="px-5 py-2 bg-[#1A56DB] text-white text-sm font-medium rounded-lg hover:bg-[#1A4FBF] transition-colors"
@@ -390,7 +546,7 @@ export default function DatasetsPage() {
                   <div>
                     <p className="text-xs font-semibold text-[#1A56DB]">Expected CSV format</p>
                     <p className="text-[11px] text-blue-600 mt-0.5">
-                      Header row required. Columns: name, sql_score, url, location, annual_revenue, team_size, age_years, thematic_areas, linkedin_url, kdm_name, kdm_phone, kdm_email, kdm_designation
+                      Header row required · 24 columns: org fields (name, url, location, annual_revenue, team_size, age_years, thematic_areas, linkedin_url) + KDM1–3 (name, phone, email, designation, linkedin each)
                     </p>
                   </div>
                   <button
