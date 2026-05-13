@@ -563,21 +563,23 @@ function LogActivityModal({ leadId, onClose, onSuccess }: { leadId: string; onCl
 
 function BookDemoModal({ lead, contacts, onClose, onSuccess }: { lead: LeadWithOrg; contacts: any[]; onClose: () => void; onSuccess: () => void }) {
   const [demoDate, setDemoDate] = useState('')
-  const [summary, setSummary] = useState('')
+  const [painPoint, setPainPoint] = useState('')
+  const [demoExpectation, setDemoExpectation] = useState('')
+  const [extraNotes, setExtraNotes] = useState('')
   const [signal, setSignal] = useState('warm')
   const [closerId, setCloserId] = useState('')
   const [closers, setClosers] = useState<{ id: string; name: string }[]>([])
   const [saving, setSaving] = useState(false)
-  const summaryTooShort = summary.trim().length < 50
   const org = lead.organization
   const primaryContact = contacts.find(c => c.is_primary) ?? contacts[0]
+
+  const canSubmit = painPoint.trim().length >= 5 && demoExpectation.trim().length >= 5 && !!closerId && !!demoDate
 
   // Fetch active closers when modal opens — uses /api/closers (open to all authenticated users)
   useEffect(() => {
     fetch('/api/closers')
       .then(r => r.json())
       .then(data => {
-        // Guard: ensure we received an array (not an error object)
         const activeClosers = Array.isArray(data) ? data : []
         setClosers(activeClosers)
         if (activeClosers.length === 1) setCloserId(activeClosers[0].id)
@@ -587,16 +589,19 @@ function BookDemoModal({ lead, contacts, onClose, onSuccess }: { lead: LeadWithO
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
-    if (summaryTooShort) return
-    if (!closerId) return alert('Please select a closer for this demo.')
+    if (!canSubmit) return
     setSaving(true)
     const res = await fetch('/api/demos', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         lead_id: lead.id, org_id: lead.org_id,
-        demo_date: demoDate, sdr_summary: summary.trim(),
-        sdr_interest_signal: signal, closer_id: closerId,
+        demo_date: demoDate,
+        pain_point: painPoint.trim(),
+        demo_expectation: demoExpectation.trim(),
+        sdr_summary: extraNotes.trim() || null,
+        sdr_interest_signal: signal,
+        closer_id: closerId,
       }),
     })
     if (res.ok) onSuccess()
@@ -703,33 +708,71 @@ function BookDemoModal({ lead, contacts, onClose, onSuccess }: { lead: LeadWithO
             </div>
           </div>
 
-          {/* Conversation summary */}
-          <div>
-            <label className="block text-[10px] font-semibold uppercase tracking-widest text-[#64748B] mb-1">
-              Conversation Summary for Closer <span className="text-red-500">* (min 50 chars)</span>
-            </label>
-            <textarea
-              value={summary}
-              onChange={e => setSummary(e.target.value)}
-              required
-              rows={4}
-              placeholder="What did you discuss? Why are they interested? Key pain points, budget signals, decision timeline — anything the Closer needs to know before the demo."
-              className={cn(
-                'w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 resize-none',
-                summaryTooShort && summary.length > 0
-                  ? 'border-red-400 focus:ring-red-300/20'
-                  : 'border-[#E2E8F0] focus:ring-[#1A56DB]/20'
-              )}
-            />
-            <p className={cn('text-[10px] mt-1', summaryTooShort ? 'text-red-500' : 'text-[#94A3B8]')}>
-              {summary.trim().length}/50 chars {summaryTooShort ? '— cannot submit until 50+ chars' : '✓'}
+          {/* ── Structured SDR context for Closer ── */}
+          <div className="space-y-3 p-3.5 bg-[#F8FAFC] rounded-xl border border-[#E2E8F0]">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-[#64748B]">
+              Context for Closer <span className="text-red-500">*</span>
             </p>
+
+            {/* Pain Point */}
+            <div>
+              <label className="block text-xs font-medium text-[#374151] mb-1">
+                What is their main pain point?
+              </label>
+              <textarea
+                value={painPoint}
+                onChange={e => setPainPoint(e.target.value)}
+                required
+                rows={2}
+                placeholder="e.g. They struggle with donor retention and want tools to improve repeat giving rates."
+                className={cn(
+                  'w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 resize-none',
+                  painPoint.length > 0 && painPoint.trim().length < 5
+                    ? 'border-red-300 focus:ring-red-200/20'
+                    : 'border-[#E2E8F0] focus:ring-[#1A56DB]/20'
+                )}
+              />
+            </div>
+
+            {/* Demo Expectation */}
+            <div>
+              <label className="block text-xs font-medium text-[#374151] mb-1">
+                What are they expecting from the demo?
+              </label>
+              <textarea
+                value={demoExpectation}
+                onChange={e => setDemoExpectation(e.target.value)}
+                required
+                rows={2}
+                placeholder="e.g. They want to see the reporting dashboard and how it integrates with their existing CRM."
+                className={cn(
+                  'w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 resize-none',
+                  demoExpectation.length > 0 && demoExpectation.trim().length < 5
+                    ? 'border-red-300 focus:ring-red-200/20'
+                    : 'border-[#E2E8F0] focus:ring-[#1A56DB]/20'
+                )}
+              />
+            </div>
+
+            {/* Optional extra notes */}
+            <div>
+              <label className="block text-xs font-medium text-[#64748B] mb-1">
+                Anything else the closer should know? <span className="font-normal text-[#94A3B8]">(optional)</span>
+              </label>
+              <textarea
+                value={extraNotes}
+                onChange={e => setExtraNotes(e.target.value)}
+                rows={2}
+                placeholder="Budget signals, decision timeline, key stakeholders, objections to address..."
+                className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20 resize-none"
+              />
+            </div>
           </div>
 
           <div className="flex gap-2 pt-1">
             <button
               type="submit"
-              disabled={saving || summaryTooShort || !closerId || !demoDate}
+              disabled={saving || !canSubmit}
               className="flex-1 py-2 bg-[#059669] text-white text-sm font-medium rounded-lg hover:bg-[#047857] disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
             >
               {saving ? 'Booking...' : 'Confirm Demo Booking'}

@@ -21,11 +21,23 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json()
-  const { lead_id, org_id, demo_date, sdr_summary, sdr_interest_signal, closer_id: requestedCloserId } = body
+  const {
+    lead_id, org_id, demo_date,
+    pain_point, demo_expectation, sdr_summary,
+    sdr_interest_signal, closer_id: requestedCloserId,
+  } = body
 
-  if (!sdr_summary || sdr_summary.trim().length < 50) {
+  // pain_point is the new required structured field
+  if (!pain_point || String(pain_point).trim().length < 5) {
     return NextResponse.json(
-      { error: 'SDR conversation summary is mandatory and must be at least 50 characters.' },
+      { error: 'Pain point is required (min 5 characters).' },
+      { status: 400 }
+    )
+  }
+
+  if (!demo_expectation || String(demo_expectation).trim().length < 5) {
+    return NextResponse.json(
+      { error: 'Demo expectation is required (min 5 characters).' },
       { status: 400 }
     )
   }
@@ -100,7 +112,9 @@ export async function POST(req: NextRequest) {
       sdr_id: sdrProfile.id,
       closer_id: assignedCloserId,
       demo_date,
-      sdr_summary: sdr_summary.trim(),
+      pain_point: String(pain_point).trim(),
+      demo_expectation: String(demo_expectation).trim(),
+      sdr_summary: sdr_summary ? String(sdr_summary).trim() : null,
       sdr_interest_signal,
       status: 'scheduled',
     })
@@ -140,7 +154,7 @@ export async function POST(req: NextRequest) {
     org_id,
     user_id: sdrProfile.id,
     activity_type: 'demo_booked',
-    notes: `Demo booked for ${demo_date}. Summary: ${sdr_summary.slice(0, 100)}...`,
+    notes: `Demo booked for ${demo_date}. Pain point: ${String(pain_point).slice(0, 80)}`,
     new_value: 'demo_booked',
   })
 
