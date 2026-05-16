@@ -584,7 +584,7 @@ export default function TeamPage() {
   )
 
   return (
-    <div className="flex-1 flex flex-col bg-[#F8FAFC]">
+    <div className="flex-1 min-h-0 flex flex-col bg-[#F8FAFC]">
       <TopBar title="Team" subtitle="Management & Statistics" />
 
       <div className="flex-1 p-6 space-y-5 overflow-y-auto">

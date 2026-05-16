@@ -100,7 +100,7 @@ export default function SDRDemosPage() {
   }
 
   return (
-    <div className="flex-1 flex flex-col bg-[#F8FAFC]">
+    <div className="flex-1 min-h-0 flex flex-col bg-[#F8FAFC]">
       <TopBar
         title="My Demos"
         subtitle={`${demos.length} upcoming${needsReminder.length > 0 ? ` · ${needsReminder.length} reminder${needsReminder.length > 1 ? 's' : ''} due` : ''}`}

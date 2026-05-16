@@ -76,7 +76,7 @@ export default function SDRLeadsPage() {
   }
 
   return (
-    <div className="flex-1 flex">
+    <div className="flex-1 min-h-0 flex">
       {/* Lead list */}
       <div className={cn('flex flex-col transition-all', showPanel ? 'w-96' : 'flex-1')}>
         <TopBar title="My Leads" subtitle={`${filtered.length} leads`} />

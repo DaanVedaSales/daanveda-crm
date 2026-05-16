@@ -188,7 +188,7 @@ export default function ActionsPage() {
   }
 
   return (
-    <div className="flex-1 flex flex-col bg-[#F8FAFC]">
+    <div className="flex-1 min-h-0 flex flex-col bg-[#F8FAFC]">
       <TopBar
         title="Upcoming Demos"
         subtitle={`${allDemos.length} upcoming · ${todayCount} today`}

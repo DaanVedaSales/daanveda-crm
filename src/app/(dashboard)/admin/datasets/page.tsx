@@ -465,7 +465,7 @@ export default function DatasetsPage() {
   }
 
   return (
-    <div className="flex-1 flex flex-col">
+    <div className="flex-1 min-h-0 flex flex-col">
       <TopBar title="Datasets" subtitle="Manage and upload lead datasets" />
       <div className="flex-1 p-6 space-y-5 overflow-y-auto">
 

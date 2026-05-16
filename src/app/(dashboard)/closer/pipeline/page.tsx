@@ -812,7 +812,7 @@ export default function PipelinePage() {
   const totalValue = allDeals.filter(d => !TERMINAL_STAGES.includes(d.stage)).reduce((s, d) => s + (d.deal_value ?? 0), 0)
 
   return (
-    <div className="flex-1 flex flex-col bg-[#F8FAFC]">
+    <div className="flex-1 min-h-0 flex flex-col bg-[#F8FAFC]">
       <TopBar
         title="Pipeline"
         subtitle={loading ? 'Loading…' : `${allDeals.length} deals · ${formatCurrency(totalValue)} in play`}

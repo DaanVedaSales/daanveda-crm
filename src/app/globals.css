@@ -45,9 +45,6 @@
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    /* Prevent browser-level window scroll — all scrolling happens inside workspace containers */
-    height: 100%;
-    overflow: hidden;
   }
 
   body {
@@ -55,9 +52,6 @@
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
     font-size: 13px;
     line-height: 1.5;
-    /* Match html — workspace inner containers handle their own overflow-y-auto */
-    height: 100%;
-    overflow: hidden;
   }
 
   /* Tabular numerals for all monetary/numeric displays */
