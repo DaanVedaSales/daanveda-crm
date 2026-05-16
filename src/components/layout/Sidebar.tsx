@@ -43,8 +43,8 @@ export default function Sidebar({ role, userName }: SidebarProps) {
   const navItems = NAV_MAP[role] ?? SDR_NAV
   const initials = userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
 
-  // Collapsible state — persist in localStorage
-  const [collapsed, setCollapsed] = useState(false)
+  // Collapsible state — persist in localStorage; default collapsed for premium look
+  const [collapsed, setCollapsed] = useState(true)
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
@@ -99,7 +99,7 @@ export default function Sidebar({ role, userName }: SidebarProps) {
       <div className={cn('mx-3 h-px bg-white/[0.06] mb-2', isCollapsed && 'mx-2')} />
 
       {/* ── Navigation ──────────────────────────────────────────────────── */}
-      <nav className={cn('flex-1 px-2 py-1 space-y-0.5', isCollapsed && 'px-1.5')}>
+      <nav className={cn('flex-1 min-h-0 overflow-y-auto px-2 py-1 space-y-0.5', isCollapsed && 'px-1.5')}>
         {navItems.map((item) => {
           const Icon   = ICON_MAP[item.icon]
           const isActive = pathname === item.href || pathname.startsWith(item.href + '/')

@@ -82,6 +82,7 @@ export async function POST(req: NextRequest) {
   })
 
   // 3. Create lead (phase=closer since closer is entering it directly)
+  // Note: leads table has no notes column — context goes into sdr_summary on the demo record
   const { data: lead, error: leadErr } = await supabase
     .from('leads')
     .insert({
@@ -89,7 +90,6 @@ export async function POST(req: NextRequest) {
       status: 'demo_booked', // treat as already handed off to closer
       phase: 'closer',
       assigned_to: profile.id,
-      notes: notes?.trim() || null,
     })
     .select('id')
     .single()

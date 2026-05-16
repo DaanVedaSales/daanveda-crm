@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     kdm_name,
     kdm_phone,
     kdm_designation,
-    notes,
+    notes, // stored in activity log, not in leads table (leads has no notes column)
   } = body
 
   if (!org_name?.trim()) {
@@ -72,20 +72,24 @@ export async function POST(req: NextRequest) {
       status: 'new',
       phase: 'sdr',
       assigned_to: profile.id,
-      notes: notes?.trim() || null,
     })
     .select()
     .single()
 
   if (leadErr) return NextResponse.json({ error: leadErr.message }, { status: 500 })
 
-  // 4. Log activity
+  // 4. Log activity — include SDR's notes here since leads table has no notes column
+  const activityNote = [
+    `Lead manually entered by SDR. KDM: ${kdm_name.trim()}${kdm_phone ? ` · ${kdm_phone}` : ''}`,
+    notes?.trim() ? `SDR note: ${notes.trim()}` : null,
+  ].filter(Boolean).join(' — ')
+
   await supabase.from('activities').insert({
     lead_id: lead.id,
     org_id: org.id,
     user_id: profile.id,
     activity_type: 'note',
-    notes: `Lead manually entered by SDR. KDM: ${kdm_name.trim()}${kdm_phone ? ` · ${kdm_phone}` : ''}`,
+    notes: activityNote,
     new_value: 'manual_entry',
   })
 
