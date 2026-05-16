@@ -6,7 +6,8 @@ import { createClient } from '@/lib/supabase/client'
 import { KANBAN_STAGES, DEAL_STAGE_LABELS, DEAL_STAGE_COLORS } from '@/lib/constants'
 import { formatCurrency } from '@/lib/utils'
 import type { DealStage } from '@/types/database'
-import { X, Send, Trash2, IndianRupee, Calendar, GripVertical, Plus, ChevronDown, ExternalLink, Building2, Users, Banknote, Tag, AlertCircle, Target, StickyNote } from 'lucide-react'
+import { X, Send, Trash2, IndianRupee, Calendar, GripVertical, Plus, ChevronDown, ExternalLink, Building2, Users, Banknote, Tag, AlertCircle, Target, StickyNote, MessageSquare, User } from 'lucide-react'
+import DateTimePicker from '@/components/ui/DateTimePicker'
 import { cn } from '@/lib/utils'
 
 interface DealWithDetails {
@@ -21,6 +22,10 @@ interface DealWithDetails {
   updated_at: string
   created_at: string
   sdr_id: string | null
+  poc_name: string | null
+  poc_designation: string | null
+  poc_phone: string | null
+  poc_email: string | null
   organization: {
     id: string
     name: string
@@ -315,6 +320,17 @@ function KanbanColumn({
   )
 }
 
+// Stages where POC section is shown
+const POC_VISIBLE_STAGES: DealStage[] = ['demo_done', 'follow_up', 'proposal', 'negotiation', 'won', 'lost', 'ghosted', 'unqualified']
+
+interface DealComment {
+  id: string
+  comment: string
+  deal_stage: string
+  created_at: string
+  user: { id: string; name: string } | null
+}
+
 // ── Deal Detail Panel ──────────────────────────────────────────────────────────
 function DealPanel({ deal, onClose, onUpdate }: { deal: DealWithDetails; onClose: () => void; onUpdate: () => void }) {
   const [dealValue,   setDealValue]   = useState(deal.deal_value?.toString() ?? '')
@@ -323,6 +339,29 @@ function DealPanel({ deal, onClose, onUpdate }: { deal: DealWithDetails; onClose
   const [billingName, setBillingName] = useState(deal.billing_name ?? '')
   const [saving,      setSaving]      = useState(false)
   const [removing,    setRemoving]    = useState(false)
+
+  // POC state
+  const [pocName,        setPocName]        = useState(deal.poc_name ?? '')
+  const [pocDesignation, setPocDesignation] = useState(deal.poc_designation ?? '')
+  const [pocPhone,       setPocPhone]       = useState(deal.poc_phone ?? '')
+  const [pocEmail,       setPocEmail]       = useState(deal.poc_email ?? '')
+  const [pocEditing,     setPocEditing]     = useState(false)
+  const [pocSaving,      setPocSaving]      = useState(false)
+
+  // Comments state
+  const [comments,       setComments]       = useState<DealComment[]>([])
+  const [commentsLoading, setCommentsLoading] = useState(true)
+  const [commentText,    setCommentText]    = useState('')
+  const [postingComment, setPostingComment] = useState(false)
+
+  const showPoc = POC_VISIBLE_STAGES.includes(deal.stage)
+
+  useEffect(() => {
+    fetch(`/api/deals/comments?deal_id=${deal.id}`)
+      .then(r => r.json())
+      .then(data => { setComments(Array.isArray(data) ? data : []); setCommentsLoading(false) })
+      .catch(() => setCommentsLoading(false))
+  }, [deal.id])
 
   async function save() {
     setSaving(true)
@@ -333,6 +372,39 @@ function DealPanel({ deal, onClose, onUpdate }: { deal: DealWithDetails; onClose
     if (billingName)  payload.billing_name = billingName
     await fetch(`/api/deals/${deal.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
     setSaving(false); onUpdate(); onClose()
+  }
+
+  async function savePoc() {
+    setPocSaving(true)
+    await fetch(`/api/deals/${deal.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        poc_name: pocName.trim() || null,
+        poc_designation: pocDesignation.trim() || null,
+        poc_phone: pocPhone.trim() || null,
+        poc_email: pocEmail.trim() || null,
+      }),
+    })
+    setPocSaving(false)
+    setPocEditing(false)
+    onUpdate()
+  }
+
+  async function postComment() {
+    if (!commentText.trim()) return
+    setPostingComment(true)
+    const res = await fetch('/api/deals/comments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deal_id: deal.id, comment: commentText.trim(), deal_stage: deal.stage }),
+    })
+    if (res.ok) {
+      const newComment: DealComment = await res.json()
+      setComments(prev => [newComment, ...prev])
+      setCommentText('')
+    }
+    setPostingComment(false)
   }
 
   async function removeFromBoard() {
@@ -555,6 +627,171 @@ function DealPanel({ deal, onClose, onUpdate }: { deal: DealWithDetails; onClose
             </div>
           )}
 
+          {/* ── Point of Contact ─────────────────────────────────────────── */}
+          {showPoc && (
+            <div className="p-4 bg-white rounded-xl border border-[#E2E8F0] space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-label text-[#94A3B8] flex items-center gap-1.5">
+                  <User className="w-3 h-3" strokeWidth={2} /> Point of Contact
+                </p>
+                {!pocEditing && (
+                  <button
+                    onClick={() => setPocEditing(true)}
+                    className="text-[11px] font-medium text-[#1A56DB] hover:text-[#1743B0] transition-colors"
+                  >
+                    {pocName ? 'Edit' : '+ Add'}
+                  </button>
+                )}
+              </div>
+
+              {pocEditing ? (
+                <div className="space-y-2.5">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[10px] text-[#94A3B8] mb-1">Name</label>
+                      <input
+                        value={pocName}
+                        onChange={e => setPocName(e.target.value)}
+                        placeholder="Full name"
+                        className="field text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-[#94A3B8] mb-1">Designation</label>
+                      <input
+                        value={pocDesignation}
+                        onChange={e => setPocDesignation(e.target.value)}
+                        placeholder="CFO, Director..."
+                        className="field text-sm"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[10px] text-[#94A3B8] mb-1">Phone</label>
+                      <input
+                        value={pocPhone}
+                        onChange={e => setPocPhone(e.target.value)}
+                        placeholder="+91 98765 43210"
+                        className="field text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-[#94A3B8] mb-1">Email</label>
+                      <input
+                        value={pocEmail}
+                        onChange={e => setPocEmail(e.target.value)}
+                        placeholder="poc@org.com"
+                        className="field text-sm"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      onClick={savePoc}
+                      disabled={pocSaving}
+                      className="flex-1 py-1.5 text-xs font-medium bg-[#1A56DB] text-white rounded-lg hover:bg-[#1743B0] disabled:opacity-60 transition-colors"
+                    >
+                      {pocSaving ? 'Saving…' : 'Save POC'}
+                    </button>
+                    <button
+                      onClick={() => { setPocEditing(false); setPocName(deal.poc_name ?? ''); setPocDesignation(deal.poc_designation ?? ''); setPocPhone(deal.poc_phone ?? ''); setPocEmail(deal.poc_email ?? '') }}
+                      className="py-1.5 px-3 text-xs border border-[#E2E8F0] text-[#64748B] rounded-lg hover:bg-[#F8FAFC]"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : pocName ? (
+                <div className="space-y-1.5">
+                  <p className="text-[13px] font-semibold text-[#0F172A]">{pocName}</p>
+                  {pocDesignation && <p className="text-[11px] text-[#64748B]">{pocDesignation}</p>}
+                  <div className="flex flex-wrap gap-3 text-[11px] text-[#94A3B8] mt-1">
+                    {pocPhone && <span>{pocPhone}</span>}
+                    {pocEmail && <span>{pocEmail}</span>}
+                  </div>
+                </div>
+              ) : (
+                <p className="text-[12px] text-[#94A3B8]">No POC added yet — click + Add to record who to follow up with.</p>
+              )}
+            </div>
+          )}
+
+          {/* ── Comments ─────────────────────────────────────────────────── */}
+          <div className="space-y-3">
+            <p className="text-label text-[#94A3B8] flex items-center gap-1.5">
+              <MessageSquare className="w-3 h-3" strokeWidth={2} /> Comments
+              {comments.length > 0 && <span className="ml-auto text-[10px] text-[#CBD5E1]">{comments.length}</span>}
+            </p>
+
+            {/* Comment input */}
+            <div className="flex flex-col gap-2">
+              <textarea
+                value={commentText}
+                onChange={e => setCommentText(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) postComment() }}
+                rows={2}
+                placeholder="Add a note about this deal… (⌘+Enter to post)"
+                className="field resize-none text-sm"
+                maxLength={1000}
+              />
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-[#CBD5E1]">{commentText.length}/1000</span>
+                <button
+                  onClick={postComment}
+                  disabled={postingComment || !commentText.trim()}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-[#1A56DB] text-white rounded-lg hover:bg-[#1743B0] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  <Send className="w-3 h-3" strokeWidth={2} />
+                  {postingComment ? 'Posting…' : 'Post'}
+                </button>
+              </div>
+            </div>
+
+            {/* Comment feed */}
+            {commentsLoading ? (
+              <div className="space-y-2">
+                {[...Array(2)].map((_, i) => (
+                  <div key={i} className="p-3 bg-[#F8FAFC] rounded-xl border border-[#F1F5F9] space-y-1.5">
+                    <div className="skeleton h-2.5 w-24 rounded" />
+                    <div className="skeleton h-3 w-full rounded" />
+                  </div>
+                ))}
+              </div>
+            ) : comments.length === 0 ? (
+              <p className="text-[12px] text-[#CBD5E1] text-center py-3">No comments yet</p>
+            ) : (
+              <div className="space-y-2">
+                {comments.map(c => (
+                  <div key={c.id} className="p-3 bg-[#F8FAFC] rounded-xl border border-[#F1F5F9]">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-5 h-5 rounded-full bg-[#EFF6FF] flex items-center justify-center">
+                          <span className="text-[9px] font-bold text-[#1A56DB]">
+                            {c.user?.name?.charAt(0).toUpperCase() ?? '?'}
+                          </span>
+                        </div>
+                        <span className="text-[11px] font-medium text-[#374151]">{c.user?.name ?? 'Unknown'}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full text-white"
+                          style={{ backgroundColor: DEAL_STAGE_COLORS[c.deal_stage as DealStage] ?? '#94A3B8' }}
+                        >
+                          {DEAL_STAGE_LABELS[c.deal_stage as DealStage] ?? c.deal_stage}
+                        </span>
+                        <span className="text-[10px] text-[#94A3B8]">
+                          {new Date(c.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                        </span>
+                      </div>
+                    </div>
+                    <p className="text-[12px] text-[#374151] leading-relaxed whitespace-pre-wrap">{c.comment}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* Deal Value */}
           <div>
             <label className="text-label text-[#64748B] mb-1.5 block">Deal Value (₹)</label>
@@ -725,12 +962,10 @@ function AddDealModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
               ))}
             </div>
             {demoStatus === 'scheduled' && (
-              <input
-                type="datetime-local"
+              <DateTimePicker
                 value={demoDate}
-                onChange={e => setDemoDate(e.target.value)}
-                min={new Date().toISOString().slice(0, 16)}
-                className={fieldCls}
+                onChange={setDemoDate}
+                placeholder="Pick demo date & time"
               />
             )}
           </section>

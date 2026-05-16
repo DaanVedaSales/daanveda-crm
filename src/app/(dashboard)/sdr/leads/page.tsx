@@ -5,7 +5,8 @@ import TopBar from '@/components/layout/TopBar'
 import { createClient } from '@/lib/supabase/client'
 import { LEAD_STATUS_LABELS, LEAD_STATUS_COLORS, INTEREST_SIGNAL_LABELS, INTEREST_SIGNAL_COLORS } from '@/lib/constants'
 import { formatRelativeDate, cn } from '@/lib/utils'
-import { Search, ChevronRight, Plus } from 'lucide-react'
+import { Search, ChevronRight, Plus, Pencil } from 'lucide-react'
+import DateTimePicker from '@/components/ui/DateTimePicker'
 import type { Lead, Organization, InterestSignal, LeadStatus } from '@/types/database'
 
 interface LeadWithOrg extends Lead {
@@ -186,15 +187,42 @@ export default function SDRLeadsPage() {
 function AddLeadModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
   const [orgName, setOrgName] = useState('')
   const [location, setLocation] = useState('')
+  const [orgUrl, setOrgUrl] = useState('')
+  const [orgLinkedin, setOrgLinkedin] = useState('')
+  const [thematicAreas, setThematicAreas] = useState<string[]>([])
+  const [thematicInput, setThematicInput] = useState('')
   const [kdmName, setKdmName] = useState('')
   const [kdmPhone, setKdmPhone] = useState('')
   const [kdmDesignation, setKdmDesignation] = useState('')
+  const [kdmEmail, setKdmEmail] = useState('')
+  const [kdmLinkedin, setKdmLinkedin] = useState('')
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
+  function addThematicTag(raw: string) {
+    const tags = raw.split(',').map(t => t.trim()).filter(Boolean)
+    setThematicAreas(prev => {
+      const merged = [...prev]
+      tags.forEach(t => { if (!merged.includes(t)) merged.push(t) })
+      return merged
+    })
+    setThematicInput('')
+  }
+
+  function handleThematicKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault()
+      if (thematicInput.trim()) addThematicTag(thematicInput)
+    } else if (e.key === 'Backspace' && !thematicInput && thematicAreas.length > 0) {
+      setThematicAreas(prev => prev.slice(0, -1))
+    }
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault()
+    // Commit any pending thematic input
+    if (thematicInput.trim()) addThematicTag(thematicInput)
     setError('')
     setSaving(true)
     const res = await fetch('/api/leads/manual', {
@@ -203,9 +231,14 @@ function AddLeadModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
       body: JSON.stringify({
         org_name: orgName,
         location,
+        org_url: orgUrl,
+        org_linkedin: orgLinkedin,
+        thematic_areas: thematicAreas,
         kdm_name: kdmName,
         kdm_phone: kdmPhone,
         kdm_designation: kdmDesignation,
+        kdm_email: kdmEmail,
+        kdm_linkedin: kdmLinkedin,
         notes,
       }),
     })
@@ -230,9 +263,11 @@ function AddLeadModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
         </div>
 
         <form onSubmit={submit} className="space-y-4">
-          {/* Organisation */}
+
+          {/* ── Organisation ─────────────────────────────────────────────── */}
           <div className="space-y-3">
             <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8]">Organisation</p>
+
             <div>
               <label className="block text-xs text-[#64748B] mb-1">Name <span className="text-red-500">*</span></label>
               <input
@@ -243,37 +278,76 @@ function AddLeadModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
                 className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20"
               />
             </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-[#64748B] mb-1">Location</label>
+                <input
+                  value={location}
+                  onChange={e => setLocation(e.target.value)}
+                  placeholder="City, State"
+                  className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-[#64748B] mb-1">Website</label>
+                <input
+                  value={orgUrl}
+                  onChange={e => setOrgUrl(e.target.value)}
+                  placeholder="https://..."
+                  className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20"
+                />
+              </div>
+            </div>
+
             <div>
-              <label className="block text-xs text-[#64748B] mb-1">Location</label>
+              <label className="block text-xs text-[#64748B] mb-1">LinkedIn URL</label>
               <input
-                value={location}
-                onChange={e => setLocation(e.target.value)}
-                placeholder="City, State"
+                value={orgLinkedin}
+                onChange={e => setOrgLinkedin(e.target.value)}
+                placeholder="https://linkedin.com/company/..."
                 className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20"
               />
+            </div>
+
+            <div>
+              <label className="block text-xs text-[#64748B] mb-1">
+                Thematic Areas
+                <span className="text-[#94A3B8] font-normal ml-1">(Enter or comma to add)</span>
+              </label>
+              <div className="flex flex-wrap gap-1.5 px-3 py-2 border border-[#E2E8F0] rounded-lg min-h-[38px] cursor-text focus-within:ring-2 focus-within:ring-[#1A56DB]/20 focus-within:border-[#1A56DB]"
+                onClick={e => (e.currentTarget.querySelector('input') as HTMLInputElement)?.focus()}
+              >
+                {thematicAreas.map(tag => (
+                  <span key={tag} className="flex items-center gap-1 bg-[#EFF6FF] text-[#1A56DB] text-[11px] font-medium px-2 py-0.5 rounded-full">
+                    {tag}
+                    <button type="button" onClick={() => setThematicAreas(prev => prev.filter(t => t !== tag))} className="text-[#93C5FD] hover:text-[#1A56DB] leading-none">×</button>
+                  </span>
+                ))}
+                <input
+                  value={thematicInput}
+                  onChange={e => setThematicInput(e.target.value)}
+                  onKeyDown={handleThematicKeyDown}
+                  onBlur={() => { if (thematicInput.trim()) addThematicTag(thematicInput) }}
+                  placeholder={thematicAreas.length === 0 ? 'e.g. Education, Health...' : ''}
+                  className="flex-1 min-w-[80px] text-sm outline-none bg-transparent"
+                />
+              </div>
             </div>
           </div>
 
-          {/* KDM */}
+          {/* ── Key Decision Maker ───────────────────────────────────────── */}
           <div className="space-y-3 pt-2 border-t border-[#F1F5F9]">
             <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8]">Key Decision Maker</p>
-            <div>
-              <label className="block text-xs text-[#64748B] mb-1">Name <span className="text-red-500">*</span></label>
-              <input
-                required
-                value={kdmName}
-                onChange={e => setKdmName(e.target.value)}
-                placeholder="Full name"
-                className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20"
-              />
-            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs text-[#64748B] mb-1">Phone</label>
+                <label className="block text-xs text-[#64748B] mb-1">Name <span className="text-red-500">*</span></label>
                 <input
-                  value={kdmPhone}
-                  onChange={e => setKdmPhone(e.target.value)}
-                  placeholder="+91 98765 43210"
+                  required
+                  value={kdmName}
+                  onChange={e => setKdmName(e.target.value)}
+                  placeholder="Full name"
                   className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20"
                 />
               </div>
@@ -287,11 +361,43 @@ function AddLeadModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
                 />
               </div>
             </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-[#64748B] mb-1">Phone</label>
+                <input
+                  value={kdmPhone}
+                  onChange={e => setKdmPhone(e.target.value)}
+                  placeholder="+91 98765 43210"
+                  className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-[#64748B] mb-1">Email</label>
+                <input
+                  type="email"
+                  value={kdmEmail}
+                  onChange={e => setKdmEmail(e.target.value)}
+                  placeholder="name@org.com"
+                  className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs text-[#64748B] mb-1">LinkedIn URL</label>
+              <input
+                value={kdmLinkedin}
+                onChange={e => setKdmLinkedin(e.target.value)}
+                placeholder="https://linkedin.com/in/..."
+                className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20"
+              />
+            </div>
           </div>
 
-          {/* Notes */}
+          {/* ── Notes ────────────────────────────────────────────────────── */}
           <div className="pt-2 border-t border-[#F1F5F9]">
-            <label className="block text-xs text-[#64748B] mb-1">Notes (optional)</label>
+            <label className="block text-xs text-[#64748B] mb-1">Notes <span className="text-[#94A3B8] font-normal">(optional)</span></label>
             <textarea
               value={notes}
               onChange={e => setNotes(e.target.value)}
@@ -341,6 +447,7 @@ function LeadDetailPanel({
   const [contacts, setContacts] = useState<any[]>([])
   const [showLogActivity, setShowLogActivity] = useState(false)
   const [showBookDemo, setShowBookDemo] = useState(false)
+  const [showEditLead, setShowEditLead] = useState(false)
   const supabase = createClient()
 
   useEffect(() => {
@@ -360,7 +467,16 @@ function LeadDetailPanel({
             <h2 className="font-semibold text-[#0F172A] text-base">{org?.name}</h2>
             <p className="text-xs text-[#94A3B8] mt-0.5">{org?.location} · {org?.annual_revenue ? `₹${(org.annual_revenue / 100000).toFixed(0)}L revenue` : 'Revenue N/A'}</p>
           </div>
-          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#64748B] text-lg">×</button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowEditLead(true)}
+              className="p-1.5 rounded-lg hover:bg-[#F1F5F9] text-[#94A3B8] hover:text-[#374151] transition-colors"
+              title="Edit org & contact"
+            >
+              <Pencil className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={onClose} className="text-[#94A3B8] hover:text-[#64748B] text-lg leading-none">×</button>
+          </div>
         </div>
         <div className="flex items-center gap-2 mt-2">
           <span className={cn('text-[10px] px-2 py-0.5 rounded-full font-medium', LEAD_STATUS_COLORS[lead.status as LeadStatus])}>
@@ -478,6 +594,16 @@ function LeadDetailPanel({
           onSuccess={() => { setShowBookDemo(false); onRefresh() }}
         />
       )}
+
+      {/* Edit Lead Modal */}
+      {showEditLead && (
+        <EditLeadModal
+          lead={lead}
+          contacts={contacts}
+          onClose={() => setShowEditLead(false)}
+          onSuccess={() => { setShowEditLead(false); onRefresh() }}
+        />
+      )}
     </div>
   )
 }
@@ -487,6 +613,234 @@ function Field({ label, value }: { label: string; value: React.ReactNode }) {
     <div className="flex gap-3">
       <span className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8] w-28 shrink-0 mt-0.5">{label}</span>
       <span className="text-sm text-[#0F172A]">{value}</span>
+    </div>
+  )
+}
+
+// ── Edit Lead Modal ───────────────────────────────────────────────────────────
+function EditLeadModal({
+  lead,
+  contacts,
+  onClose,
+  onSuccess,
+}: {
+  lead: LeadWithOrg
+  contacts: any[]
+  onClose: () => void
+  onSuccess: () => void
+}) {
+  const org = lead.organization
+  const primaryContact = contacts.find(c => c.is_primary) ?? contacts[0]
+
+  // Org fields
+  const [orgName,     setOrgName]     = useState(org?.name ?? '')
+  const [location,    setLocation]    = useState(org?.location ?? '')
+  const [orgUrl,      setOrgUrl]      = useState(org?.url ?? '')
+  const [orgLinkedin, setOrgLinkedin] = useState(org?.linkedin_url ?? '')
+  const [thematicAreas, setThematicAreas] = useState<string[]>(org?.thematic_areas ?? [])
+  const [thematicInput, setThematicInput] = useState('')
+
+  // KDM contact fields
+  const [kdmName,        setKdmName]        = useState(primaryContact?.name ?? '')
+  const [kdmDesignation, setKdmDesignation] = useState(primaryContact?.designation ?? '')
+  const [kdmPhone,       setKdmPhone]       = useState(primaryContact?.phone ?? '')
+  const [kdmEmail,       setKdmEmail]       = useState(primaryContact?.email ?? '')
+  const [kdmLinkedin,    setKdmLinkedin]    = useState(primaryContact?.linkedin_url ?? '')
+
+  const [saving, setSaving] = useState(false)
+  const [error,  setError]  = useState('')
+
+  function addThematicTag(raw: string) {
+    const tags = raw.split(',').map(t => t.trim()).filter(Boolean)
+    setThematicAreas(prev => {
+      const merged = [...prev]
+      tags.forEach(t => { if (!merged.includes(t)) merged.push(t) })
+      return merged
+    })
+    setThematicInput('')
+  }
+
+  function handleThematicKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault()
+      if (thematicInput.trim()) addThematicTag(thematicInput)
+    } else if (e.key === 'Backspace' && !thematicInput && thematicAreas.length > 0) {
+      setThematicAreas(prev => prev.slice(0, -1))
+    }
+  }
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    if (thematicInput.trim()) addThematicTag(thematicInput)
+    setError(''); setSaving(true)
+
+    const results = await Promise.allSettled([
+      // Update org
+      fetch(`/api/organizations/${org.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: orgName.trim(),
+          location: location.trim() || null,
+          url: orgUrl.trim() || null,
+          linkedin_url: orgLinkedin.trim() || null,
+          thematic_areas: thematicAreas.length > 0 ? thematicAreas : null,
+        }),
+      }),
+      // Update primary contact (if exists)
+      primaryContact ? fetch(`/api/contacts/${primaryContact.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: kdmName.trim(),
+          designation: kdmDesignation.trim() || null,
+          phone: kdmPhone.trim() || null,
+          email: kdmEmail.trim() || null,
+          linkedin_url: kdmLinkedin.trim() || null,
+        }),
+      }) : Promise.resolve(null),
+    ])
+
+    const failed = results.filter(r => r.status === 'rejected')
+    if (failed.length > 0) {
+      setError('Some fields failed to save. Please try again.')
+      setSaving(false)
+      return
+    }
+
+    // Check HTTP errors
+    for (const result of results) {
+      if (result.status === 'fulfilled' && result.value && !result.value.ok) {
+        const d = await result.value.json()
+        setError(d.error ?? 'Save failed')
+        setSaving(false)
+        return
+      }
+    }
+
+    setSaving(false)
+    onSuccess()
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-start justify-between mb-5">
+          <div>
+            <h3 className="font-semibold text-[#0F172A] text-base">Edit Lead</h3>
+            <p className="text-xs text-[#64748B] mt-0.5">Update org details and KDM contact</p>
+          </div>
+          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#64748B] text-xl leading-none">×</button>
+        </div>
+
+        <form onSubmit={submit} className="space-y-4">
+
+          {/* ── Organisation ─────────────────────────────────────────────── */}
+          <div className="space-y-3">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8]">Organisation</p>
+
+            <div>
+              <label className="block text-xs text-[#64748B] mb-1">Name <span className="text-red-500">*</span></label>
+              <input
+                required
+                value={orgName}
+                onChange={e => setOrgName(e.target.value)}
+                className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-[#64748B] mb-1">Location</label>
+                <input value={location} onChange={e => setLocation(e.target.value)} placeholder="City, State" className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20" />
+              </div>
+              <div>
+                <label className="block text-xs text-[#64748B] mb-1">Website</label>
+                <input value={orgUrl} onChange={e => setOrgUrl(e.target.value)} placeholder="https://..." className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20" />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs text-[#64748B] mb-1">LinkedIn URL</label>
+              <input value={orgLinkedin} onChange={e => setOrgLinkedin(e.target.value)} placeholder="https://linkedin.com/company/..." className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20" />
+            </div>
+
+            <div>
+              <label className="block text-xs text-[#64748B] mb-1">
+                Thematic Areas <span className="text-[#94A3B8] font-normal">(Enter or comma to add)</span>
+              </label>
+              <div
+                className="flex flex-wrap gap-1.5 px-3 py-2 border border-[#E2E8F0] rounded-lg min-h-[38px] cursor-text focus-within:ring-2 focus-within:ring-[#1A56DB]/20 focus-within:border-[#1A56DB]"
+                onClick={e => (e.currentTarget.querySelector('input') as HTMLInputElement)?.focus()}
+              >
+                {thematicAreas.map(tag => (
+                  <span key={tag} className="flex items-center gap-1 bg-[#EFF6FF] text-[#1A56DB] text-[11px] font-medium px-2 py-0.5 rounded-full">
+                    {tag}
+                    <button type="button" onClick={() => setThematicAreas(prev => prev.filter(t => t !== tag))} className="text-[#93C5FD] hover:text-[#1A56DB] leading-none">×</button>
+                  </span>
+                ))}
+                <input
+                  value={thematicInput}
+                  onChange={e => setThematicInput(e.target.value)}
+                  onKeyDown={handleThematicKeyDown}
+                  onBlur={() => { if (thematicInput.trim()) addThematicTag(thematicInput) }}
+                  placeholder={thematicAreas.length === 0 ? 'e.g. Education, Health...' : ''}
+                  className="flex-1 min-w-[80px] text-sm outline-none bg-transparent"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* ── Key Decision Maker ───────────────────────────────────────── */}
+          {primaryContact && (
+            <div className="space-y-3 pt-2 border-t border-[#F1F5F9]">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8]">Key Decision Maker</p>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-[#64748B] mb-1">Name</label>
+                  <input value={kdmName} onChange={e => setKdmName(e.target.value)} className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20" />
+                </div>
+                <div>
+                  <label className="block text-xs text-[#64748B] mb-1">Designation</label>
+                  <input value={kdmDesignation} onChange={e => setKdmDesignation(e.target.value)} placeholder="CEO, CFO..." className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-[#64748B] mb-1">Phone</label>
+                  <input value={kdmPhone} onChange={e => setKdmPhone(e.target.value)} className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20" />
+                </div>
+                <div>
+                  <label className="block text-xs text-[#64748B] mb-1">Email</label>
+                  <input type="email" value={kdmEmail} onChange={e => setKdmEmail(e.target.value)} className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs text-[#64748B] mb-1">LinkedIn URL</label>
+                <input value={kdmLinkedin} onChange={e => setKdmLinkedin(e.target.value)} placeholder="https://linkedin.com/in/..." className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20" />
+              </div>
+            </div>
+          )}
+
+          {error && <p className="text-xs text-red-500">{error}</p>}
+
+          <div className="flex gap-2 pt-1">
+            <button
+              type="submit"
+              disabled={saving || !orgName.trim()}
+              className="flex-1 py-2.5 bg-[#1A56DB] text-white text-sm font-medium rounded-xl hover:bg-[#1e40af] disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+            >
+              {saving ? 'Saving...' : 'Save Changes'}
+            </button>
+            <button type="button" onClick={onClose} className="py-2.5 px-4 border border-[#E2E8F0] text-sm text-[#64748B] rounded-xl hover:bg-[#F8FAFC]">
+              Cancel
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   )
 }
@@ -649,13 +1003,10 @@ function BookDemoModal({ lead, contacts, onClose, onSuccess }: { lead: LeadWithO
             <label className="block text-[10px] font-semibold uppercase tracking-widest text-[#64748B] mb-1">
               Demo Date & Time <span className="text-red-500">*</span>
             </label>
-            <input
-              type="datetime-local"
+            <DateTimePicker
               value={demoDate}
-              onChange={e => setDemoDate(e.target.value)}
-              required
-              min={new Date().toISOString().slice(0, 16)}
-              className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20"
+              onChange={setDemoDate}
+              placeholder="Pick demo date & time"
             />
           </div>
 

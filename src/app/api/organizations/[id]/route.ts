@@ -19,6 +19,41 @@ async function requireAdmin() {
   return { error: null, status: 200 }
 }
 
+// PATCH /api/organizations/[id] — update org fields (SDR or admin)
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { data: profile } = await supabase.from('users').select('role').eq('auth_id', user.id).single()
+  if (!profile || !['sdr', 'admin'].includes(profile.role)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
+  const body = await req.json()
+  const { name, location, url, linkedin_url, thematic_areas } = body
+
+  const updatePayload: Record<string, unknown> = { updated_at: new Date().toISOString() }
+  if (name !== undefined)           updatePayload.name = name
+  if (location !== undefined)       updatePayload.location = location
+  if (url !== undefined)            updatePayload.url = url
+  if (linkedin_url !== undefined)   updatePayload.linkedin_url = linkedin_url
+  if (thematic_areas !== undefined) updatePayload.thematic_areas = thematic_areas
+
+  const { data, error } = await supabase
+    .from('organizations')
+    .update(updatePayload)
+    .eq('id', params.id)
+    .select()
+    .single()
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json(data)
+}
+
 // DELETE /api/organizations/[id]
 // Permanently removes an org and all related data from the system.
 // Deletion order: activities → demos → deals → leads → contacts → organization

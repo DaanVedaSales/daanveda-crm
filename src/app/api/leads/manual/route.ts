@@ -23,9 +23,14 @@ export async function POST(req: NextRequest) {
   const {
     org_name,
     location,
+    org_url,
+    org_linkedin,
+    thematic_areas,
     kdm_name,
     kdm_phone,
     kdm_designation,
+    kdm_email,
+    kdm_linkedin,
     notes, // stored in activity log, not in leads table (leads has no notes column)
   } = body
 
@@ -36,12 +41,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'KDM (key decision maker) name is required' }, { status: 400 })
   }
 
+  // Parse thematic_areas — may be array or comma-separated string
+  let thematicArr: string[] = []
+  if (Array.isArray(thematic_areas)) thematicArr = thematic_areas.filter(Boolean)
+  else if (typeof thematic_areas === 'string' && thematic_areas.trim()) {
+    thematicArr = thematic_areas.split(',').map((s: string) => s.trim()).filter(Boolean)
+  }
+
   // 1. Create organisation
   const { data: org, error: orgErr } = await supabase
     .from('organizations')
     .insert({
       name: org_name.trim(),
       location: location?.trim() || null,
+      url: org_url?.trim() || null,
+      linkedin_url: org_linkedin?.trim() || null,
+      thematic_areas: thematicArr.length > 0 ? thematicArr : null,
     })
     .select('id')
     .single()
@@ -56,6 +71,8 @@ export async function POST(req: NextRequest) {
       name: kdm_name.trim(),
       phone: kdm_phone?.trim() || null,
       designation: kdm_designation?.trim() || null,
+      email: kdm_email?.trim() || null,
+      linkedin_url: kdm_linkedin?.trim() || null,
       is_primary: true,
     })
 

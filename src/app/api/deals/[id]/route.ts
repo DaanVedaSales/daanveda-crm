@@ -9,7 +9,8 @@ export async function PATCH(
   const body = await req.json()
   const { stage, deal_value, plan_type, next_follow_up, loss_reason,
     billing_name, billing_address, gst_number, payment_confirmed, onboarding_issued,
-    removed_from_board, proposal_sent_at } = body
+    removed_from_board, proposal_sent_at,
+    poc_name, poc_designation, poc_phone, poc_email } = body
 
   // Validate: loss_reason MANDATORY when stage = lost
   if (stage === 'lost' && !loss_reason) {
@@ -41,6 +42,10 @@ export async function PATCH(
   if (onboarding_issued !== undefined) updatePayload.onboarding_issued = onboarding_issued
   if (removed_from_board !== undefined) updatePayload.removed_from_board = removed_from_board
   if (proposal_sent_at !== undefined) updatePayload.proposal_sent_at = proposal_sent_at
+  if (poc_name !== undefined) updatePayload.poc_name = poc_name
+  if (poc_designation !== undefined) updatePayload.poc_designation = poc_designation
+  if (poc_phone !== undefined) updatePayload.poc_phone = poc_phone
+  if (poc_email !== undefined) updatePayload.poc_email = poc_email
 
   // Increment follow-up counter if updating follow-up date
   if (next_follow_up) {

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import TopBar from '@/components/layout/TopBar'
 import { createClient } from '@/lib/supabase/client'
+import DateTimePicker from '@/components/ui/DateTimePicker'
 import { cn } from '@/lib/utils'
 import { CheckCircle, XCircle, RefreshCw, ChevronDown, Bell, BellOff, Calendar, ExternalLink, Building2, Users, Banknote, Tag, AlertCircle, Target } from 'lucide-react'
 
@@ -465,12 +466,10 @@ export default function ActionsPage() {
                             <label className="block text-[11px] font-medium text-[#64748B] mb-1.5">
                               New Date & Time <span className="text-red-500">*</span>
                             </label>
-                            <input
-                              type="datetime-local"
+                            <DateTimePicker
                               value={rescheduleDate[demo.id] ?? ''}
-                              onChange={e => setRescheduleDate(p => ({ ...p, [demo.id]: e.target.value }))}
-                              min={new Date().toISOString().slice(0, 16)}
-                              className="field"
+                              onChange={val => setRescheduleDate(p => ({ ...p, [demo.id]: val }))}
+                              placeholder="Pick new date & time"
                             />
                           </div>
 

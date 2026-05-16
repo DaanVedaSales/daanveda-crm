@@ -124,7 +124,7 @@ export default function AdminLeadPoolPage() {
   const unassignedCount = leads.filter(l => !l.assigned_to && l.phase === 'sdr').length
 
   return (
-    <div className="flex-1 flex flex-col">
+    <div className="flex-1 min-h-0 flex flex-col">
       <TopBar title="Lead Pool" subtitle={`${unassignedCount} unassigned · ${leads.length} total`} />
       <div className="flex-1 p-6 space-y-4 overflow-y-auto">
 
