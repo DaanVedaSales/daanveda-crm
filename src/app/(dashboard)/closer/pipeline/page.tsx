@@ -6,8 +6,11 @@ import { createClient } from '@/lib/supabase/client'
 import { KANBAN_STAGES, DEAL_STAGE_LABELS, DEAL_STAGE_COLORS } from '@/lib/constants'
 import { formatCurrency } from '@/lib/utils'
 import type { DealStage } from '@/types/database'
-import { X, Send, Trash2, IndianRupee, Calendar, GripVertical, Plus, ChevronDown, ExternalLink, Building2, Users, Banknote, Tag, AlertCircle, Target, StickyNote, MessageSquare, User } from 'lucide-react'
+import { X, Send, Trash2, IndianRupee, Calendar, GripVertical, Plus, ChevronDown, ExternalLink, Building2, Users, Banknote, Tag, AlertCircle, Target, StickyNote, MessageSquare, User, Search } from 'lucide-react'
 import DateTimePicker from '@/components/ui/DateTimePicker'
+import OrgSearchInput from '@/components/crm/OrgSearchInput'
+import OrgSearchModal from '@/components/crm/OrgSearchModal'
+import type { OrgSearchResult } from '@/app/api/organizations/search/route'
 import { cn } from '@/lib/utils'
 
 interface DealWithDetails {
@@ -886,6 +889,7 @@ function DealPanel({ deal, onClose, onUpdate }: { deal: DealWithDetails; onClose
 // ── Add Deal Modal ─────────────────────────────────────────────────────────────
 function AddDealModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
   const [orgName,       setOrgName]       = useState('')
+  const [selectedOrg,   setSelectedOrg]   = useState<OrgSearchResult | null>(null)
   const [location,      setLocation]      = useState('')
   const [kdmName,       setKdmName]       = useState('')
   const [kdmPhone,      setKdmPhone]      = useState('')
@@ -930,7 +934,29 @@ function AddDealModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
           {/* Organisation */}
           <section className="space-y-3">
             <p className="text-label text-[#64748B]">Organisation</p>
-            <input required value={orgName} onChange={e => setOrgName(e.target.value)} placeholder="Organisation name" className={fieldCls} />
+            <OrgSearchInput
+              required
+              value={orgName}
+              onChange={setOrgName}
+              onOrgSelected={org => {
+                setSelectedOrg(org)
+                if (org?.location) setLocation(org.location)
+              }}
+              placeholder="Organisation name"
+              inputClassName={fieldCls}
+            />
+            {selectedOrg && selectedOrg.status !== 'in_database' && (
+              <div className="flex items-start gap-1.5 bg-[#FEF3C7] border border-[#FCD34D] rounded-lg px-2.5 py-2">
+                <svg className="w-3.5 h-3.5 text-[#92400E] mt-0.5 shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+                </svg>
+                <p className="text-[11px] text-[#92400E]">
+                  <span className="font-semibold">Org already in system</span> · {selectedOrg.status_label}
+                  {selectedOrg.assignee_name ? ` · ${selectedOrg.assignee_name}` : ''}.
+                  {' '}A new entry will be created.
+                </p>
+              </div>
+            )}
             <input value={location} onChange={e => setLocation(e.target.value)} placeholder="City, State" className={fieldCls} />
           </section>
 
@@ -997,7 +1023,8 @@ export default function PipelinePage() {
   const [loading,      setLoading]     = useState(true)
   const [draggingId,   setDraggingId]  = useState<string | null>(null)
   const [selectedDeal, setSelectedDeal] = useState<DealWithDetails | null>(null)
-  const [showAddDeal,  setShowAddDeal] = useState(false)
+  const [showAddDeal,   setShowAddDeal]   = useState(false)
+  const [showOrgSearch, setShowOrgSearch] = useState(false)
   // Terminal stages collapsed by default
   const [collapsedStages, setCollapsedStages] = useState<Set<DealStage>>(new Set(TERMINAL_STAGES))
   const supabase = createClient()
@@ -1052,10 +1079,19 @@ export default function PipelinePage() {
         title="Pipeline"
         subtitle={loading ? 'Loading…' : `${allDeals.length} deals · ${formatCurrency(totalValue)} in play`}
         actions={
-          <button onClick={() => setShowAddDeal(true)} className="btn-primary py-2 px-3.5 text-xs gap-1.5">
-            <Plus className="w-3.5 h-3.5" strokeWidth={2.5} />
-            Add Deal
-          </button>
+          <>
+            <button
+              onClick={() => setShowOrgSearch(true)}
+              className="flex items-center gap-1.5 py-2 px-3.5 text-xs font-semibold text-[#374151] border border-[#E2E8F0] rounded-lg hover:bg-[#F1F5F9] transition-colors"
+            >
+              <Search className="w-3.5 h-3.5" strokeWidth={2} />
+              Search Orgs
+            </button>
+            <button onClick={() => setShowAddDeal(true)} className="btn-primary py-2 px-3.5 text-xs gap-1.5">
+              <Plus className="w-3.5 h-3.5" strokeWidth={2.5} />
+              Add Deal
+            </button>
+          </>
         }
       />
 
@@ -1097,6 +1133,9 @@ export default function PipelinePage() {
       )}
       {showAddDeal && (
         <AddDealModal onClose={() => setShowAddDeal(false)} onSuccess={() => { setShowAddDeal(false); fetchPipeline() }} />
+      )}
+      {showOrgSearch && (
+        <OrgSearchModal role="closer" onClose={() => setShowOrgSearch(false)} />
       )}
     </div>
   )

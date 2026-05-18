@@ -7,6 +7,9 @@ import { LEAD_STATUS_LABELS, LEAD_STATUS_COLORS, INTEREST_SIGNAL_LABELS, INTERES
 import { formatRelativeDate, cn } from '@/lib/utils'
 import { Search, ChevronRight, Plus, Pencil } from 'lucide-react'
 import DateTimePicker from '@/components/ui/DateTimePicker'
+import OrgSearchInput from '@/components/crm/OrgSearchInput'
+import OrgSearchModal from '@/components/crm/OrgSearchModal'
+import type { OrgSearchResult } from '@/app/api/organizations/search/route'
 import type { Lead, Organization, InterestSignal, LeadStatus } from '@/types/database'
 
 interface LeadWithOrg extends Lead {
@@ -20,7 +23,8 @@ export default function SDRLeadsPage() {
   const [search, setSearch] = useState('')
   const [selectedLead, setSelectedLead] = useState<LeadWithOrg | null>(null)
   const [showPanel, setShowPanel] = useState(false)
-  const [showAddLead, setShowAddLead] = useState(false)
+  const [showAddLead,   setShowAddLead]   = useState(false)
+  const [showOrgSearch, setShowOrgSearch] = useState(false)
   const supabase = createClient()
 
   useEffect(() => { fetchLeads() }, [])
@@ -92,6 +96,13 @@ export default function SDRLeadsPage() {
               className="w-full pl-9 pr-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20 focus:border-[#1A56DB]"
             />
           </div>
+          <button
+            onClick={() => setShowOrgSearch(true)}
+            className="flex items-center gap-1.5 px-3 py-2 text-[#374151] text-xs font-semibold rounded-lg border border-[#E2E8F0] hover:bg-[#F1F5F9] transition-colors shrink-0"
+          >
+            <Search className="w-3.5 h-3.5" />
+            Search Orgs
+          </button>
           <button
             onClick={() => setShowAddLead(true)}
             className="flex items-center gap-1.5 px-3 py-2 bg-[#1A56DB] text-white text-xs font-semibold rounded-lg hover:bg-[#1e40af] transition-colors shrink-0"
@@ -179,13 +190,19 @@ export default function SDRLeadsPage() {
           onSuccess={() => { setShowAddLead(false); fetchLeads() }}
         />
       )}
+
+      {/* Org search modal */}
+      {showOrgSearch && (
+        <OrgSearchModal role="sdr" onClose={() => setShowOrgSearch(false)} />
+      )}
     </div>
   )
 }
 
 // ── Add Lead Modal ─────────────────────────────────────────────────────────────
 function AddLeadModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
-  const [orgName, setOrgName] = useState('')
+  const [orgName,      setOrgName]      = useState('')
+  const [selectedOrg,  setSelectedOrg]  = useState<OrgSearchResult | null>(null)
   const [location, setLocation] = useState('')
   const [orgUrl, setOrgUrl] = useState('')
   const [orgLinkedin, setOrgLinkedin] = useState('')
@@ -270,13 +287,36 @@ function AddLeadModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
 
             <div>
               <label className="block text-xs text-[#64748B] mb-1">Name <span className="text-red-500">*</span></label>
-              <input
+              <OrgSearchInput
                 required
                 value={orgName}
-                onChange={e => setOrgName(e.target.value)}
+                onChange={setOrgName}
+                onOrgSelected={org => {
+                  setSelectedOrg(org)
+                  if (org) {
+                    if (org.location) setLocation(org.location)
+                    if (org.thematic_areas) setThematicAreas(org.thematic_areas)
+                  }
+                }}
                 placeholder="Organisation name"
-                className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20"
+                inputClassName="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20 focus:border-[#1A56DB]"
               />
+              {selectedOrg && selectedOrg.status !== 'in_database' && (
+                <div className="mt-2 flex items-start gap-1.5 bg-[#FEF3C7] border border-[#FCD34D] rounded-lg px-2.5 py-2">
+                  <svg className="w-3.5 h-3.5 text-[#92400E] mt-0.5 shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+                  </svg>
+                  <div>
+                    <p className="text-[11px] font-semibold text-[#92400E]">
+                      This org already exists in the system
+                    </p>
+                    <p className="text-[10px] text-[#92400E] mt-0.5">
+                      {selectedOrg.status_label}{selectedOrg.assignee_name ? ` · ${selectedOrg.assignee_name}` : ''}.
+                      {' '}A new entry will be created when you submit.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-3">
