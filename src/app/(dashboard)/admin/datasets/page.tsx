@@ -6,7 +6,7 @@ import { formatDate } from '@/lib/utils'
 import { Upload, Plus, FileText, Table2, X, Download } from 'lucide-react'
 import type { Dataset } from '@/types/database'
 
-// The 24 database fields we accept in uploads
+// The 25 database fields we accept in uploads
 const DB_FIELDS = [
   // ── Organisation ─────────────────────────────────────
   { value: 'name',             label: 'Org Name',           required: true },
@@ -18,6 +18,7 @@ const DB_FIELDS = [
   { value: 'age_years',        label: 'Age (years)' },
   { value: 'thematic_areas',   label: 'Thematic Areas' },
   { value: 'linkedin_url',     label: 'Org LinkedIn' },
+  { value: 'is_client',        label: 'Is Client (yes/no)' },
   // ── Primary KDM ──────────────────────────────────────
   { value: 'kdm_name',         label: 'KDM1 Name' },
   { value: 'kdm_phone',        label: 'KDM1 Phone' },
@@ -38,9 +39,9 @@ const DB_FIELDS = [
   { value: 'kdm3_linkedin',    label: 'KDM3 LinkedIn' },
 ]
 
-const SAMPLE_CSV = `name,sql_score,url,location,annual_revenue,team_size,age_years,thematic_areas,linkedin_url,kdm_name,kdm_phone,kdm_email,kdm_designation,kdm_linkedin,kdm2_name,kdm2_phone,kdm2_email,kdm2_designation,kdm2_linkedin,kdm3_name,kdm3_phone,kdm3_email,kdm3_designation,kdm3_linkedin
-Greenpeace India,High,https://greenpeace.in,Mumbai,5000000,25,8,"Environment, Climate",https://linkedin.com/company/greenpeace-india,Ravi Kumar,9876543210,ravi@greenpeace.in,Director,https://linkedin.com/in/ravikumar,Sunita Rao,9988776655,sunita@greenpeace.in,Manager,https://linkedin.com/in/sunitarao,,,,,
-CRY India,Medium,https://cry.org,Delhi,8000000,40,30,"Child Rights, Education",https://linkedin.com/company/cry-india,Priya Sharma,9123456789,priya@cry.org,Head of Partnerships,https://linkedin.com/in/priyasharma,,,,,,,,,`
+const SAMPLE_CSV = `name,sql_score_label,url,location,annual_revenue,team_size,age_years,thematic_areas,linkedin_url,is_client,kdm_name,kdm_phone,kdm_email,kdm_designation,kdm_linkedin,kdm2_name,kdm2_phone,kdm2_email,kdm2_designation,kdm2_linkedin,kdm3_name,kdm3_phone,kdm3_email,kdm3_designation,kdm3_linkedin
+Greenpeace India,High,https://greenpeace.in,Mumbai,5000000,25,8,"Environment, Climate",https://linkedin.com/company/greenpeace-india,no,Ravi Kumar,9876543210,ravi@greenpeace.in,Director,https://linkedin.com/in/ravikumar,Sunita Rao,9988776655,sunita@greenpeace.in,Manager,https://linkedin.com/in/sunitarao,,,,,
+CRY India,Medium,https://cry.org,Delhi,8000000,40,30,"Child Rights, Education",https://linkedin.com/company/cry-india,yes,Priya Sharma,9123456789,priya@cry.org,Head of Partnerships,https://linkedin.com/in/priyasharma,,,,,,,,,`
 
 // ── CSV Parser (handles commas inside quoted fields) ──────────────────────────
 function parseCSVText(text: string): { headers: string[]; rows: Record<string, string>[] } {

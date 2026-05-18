@@ -38,6 +38,7 @@ export async function POST(req: NextRequest) {
     const {
       name, url, location, annual_revenue, team_size, thematic_areas,
       age_years, linkedin_url, sql_score_label,
+      is_client,
       // KDM1
       kdm_name, kdm_phone, kdm_email, kdm_designation, kdm_linkedin,
       // KDM2
@@ -45,6 +46,11 @@ export async function POST(req: NextRequest) {
       // KDM3
       kdm3_name, kdm3_phone, kdm3_email, kdm3_designation, kdm3_linkedin,
     } = row
+
+    // Parse is_client — truthy: "yes" / "true" / "1" / "y" (case-insensitive)
+    const isClient = typeof is_client === 'boolean'
+      ? is_client
+      : ['yes', 'true', '1', 'y'].includes(String(is_client ?? '').trim().toLowerCase())
 
     // Org name is the only required field
     if (!name || typeof name !== 'string') { skipped++; continue }
@@ -87,6 +93,7 @@ export async function POST(req: NextRequest) {
         team_size: team_size ? Number(team_size) || null : null,
         age_years: age_years ? Number(age_years) || null : null,
         sql_score_label: sql_score_label ? String(sql_score_label).slice(0, 50) : null,
+        is_client: isClient,
       })
       .select()
       .single()
@@ -132,13 +139,15 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    // Create lead record (starts in SDR queue)
-    await supabase.from('leads').insert({
-      org_id: org.id,
-      dataset_id,
-      status: 'new',
-      phase: 'sdr',
-    })
+    // Create lead record (starts in SDR queue) — skip for existing clients
+    if (!isClient) {
+      await supabase.from('leads').insert({
+        org_id: org.id,
+        dataset_id,
+        status: 'new',
+        phase: 'sdr',
+      })
+    }
 
     created++
   }
