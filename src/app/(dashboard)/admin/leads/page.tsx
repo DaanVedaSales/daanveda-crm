@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import TopBar from '@/components/layout/TopBar'
 import { LEAD_STATUS_LABELS, LEAD_STATUS_COLORS } from '@/lib/constants'
 import type { LeadStatus } from '@/types/database'
-import { Trash2, Users } from 'lucide-react'
+import { Trash2, Users, Inbox, CheckCircle2, XCircle, Loader2, MapPin } from 'lucide-react'
 
 export default function AdminLeadPoolPage() {
   const [leads, setLeads] = useState<any[]>([])
@@ -12,6 +12,7 @@ export default function AdminLeadPoolPage() {
   const [loading, setLoading] = useState(true)
   const [assigning, setAssigning] = useState<string | null>(null)
   const [filter, setFilter] = useState<'all' | 'unassigned'>('unassigned')
+  const [activeTab,     setActiveTab]     = useState<'pool' | 'claims'>('pool')
   const [confirmDelete, setConfirmDelete] = useState<{ orgId: string; orgName: string } | null>(null)
   const [deleting, setDeleting] = useState(false)
 
@@ -126,6 +127,32 @@ export default function AdminLeadPoolPage() {
   return (
     <div className="flex-1 min-h-0 flex flex-col">
       <TopBar title="Lead Pool" subtitle={`${unassignedCount} unassigned · ${leads.length} total`} />
+
+      {/* ── Top-level tab bar ───────────────────────────────────────────── */}
+      <div className="border-b border-[#E2E8F0] bg-white px-6 flex gap-0 shrink-0">
+        {([
+          ['pool',   'Lead Pool'],
+          ['claims', 'Claims'],
+        ] as const).map(([tab, label]) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`px-4 py-3 text-[13px] font-medium border-b-2 transition-colors ${
+              activeTab === tab
+                ? 'border-[#1A56DB] text-[#1A56DB]'
+                : 'border-transparent text-[#64748B] hover:text-[#374151]'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Claims tab ──────────────────────────────────────────────────── */}
+      {activeTab === 'claims' && <ClaimsSection />}
+
+      {/* ── Lead Pool tab (existing content) ────────────────────────────── */}
+      {activeTab === 'pool' && (
       <div className="flex-1 p-6 space-y-4 overflow-y-auto">
 
         {/* Filter tabs */}
@@ -264,6 +291,8 @@ export default function AdminLeadPoolPage() {
         </div>
       </div>
 
+      )} {/* end pool tab */}
+
       {/* Delete confirmation modal */}
       {confirmDelete && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
@@ -295,6 +324,218 @@ export default function AdminLeadPoolPage() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Claims Section ──────────────────────────────────────────────────────────
+
+const CLAIM_STATUS_COLORS: Record<string, string> = {
+  pending:   'bg-[#FEF3C7] text-[#92400E]',
+  approved:  'bg-[#D1FAE5] text-[#065F46]',
+  rejected:  'bg-[#FEE2E2] text-[#991B1B]',
+  fulfilled: 'bg-[#EFF6FF] text-[#1D4ED8]',
+}
+
+function ClaimsSection() {
+  const [claimType,    setClaimType]    = useState<'lead_pool' | 'data_enrichment'>('lead_pool')
+  const [statusFilter, setStatusFilter] = useState<'pending' | 'all'>('pending')
+  const [requests,     setRequests]     = useState<any[]>([])
+  const [loading,      setLoading]      = useState(true)
+  const [actioning,    setActioning]    = useState<string | null>(null)
+  const [notes,        setNotes]        = useState<Record<string, string>>({})
+
+  useEffect(() => { loadRequests() }, [claimType, statusFilter])
+
+  async function loadRequests() {
+    setLoading(true)
+    const params = new URLSearchParams({ type: claimType })
+    if (statusFilter === 'pending') params.set('status', 'pending')
+    const res = await fetch(`/api/lead-requests?${params}`)
+    const data = await res.json()
+    setRequests(Array.isArray(data) ? data : [])
+    setLoading(false)
+  }
+
+  async function action(id: string, status: 'approved' | 'rejected' | 'fulfilled') {
+    setActioning(id)
+    const res = await fetch(`/api/lead-requests/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status, admin_note: notes[id]?.trim() || undefined }),
+    })
+    if (res.ok) {
+      await loadRequests()
+    } else {
+      const d = await res.json()
+      alert(d.error ?? 'Action failed')
+    }
+    setActioning(null)
+  }
+
+  const pendingCount = requests.filter(r => r.status === 'pending').length
+
+  return (
+    <div className="flex-1 p-6 space-y-4 overflow-y-auto">
+
+      {/* Type + status filter */}
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex gap-2">
+          {([
+            ['lead_pool',       'Lead Pool Requests'],
+            ['data_enrichment', 'Data Enrichment Requests'],
+          ] as const).map(([t, lbl]) => (
+            <button
+              key={t}
+              onClick={() => setClaimType(t)}
+              className={`px-4 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                claimType === t
+                  ? 'bg-[#1A56DB] text-white'
+                  : 'bg-white border border-[#E2E8F0] text-[#64748B] hover:bg-[#F8FAFC]'
+              }`}
+            >
+              {lbl}
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={() => setStatusFilter(f => f === 'pending' ? 'all' : 'pending')}
+          className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors border ${
+            statusFilter === 'pending'
+              ? 'bg-[#FEF3C7] border-[#FCD34D] text-[#92400E]'
+              : 'border-[#E2E8F0] text-[#64748B] hover:bg-[#F8FAFC]'
+          }`}
+        >
+          {statusFilter === 'pending' ? `Pending only (${pendingCount})` : 'Showing all'}
+        </button>
+      </div>
+
+      {/* Content */}
+      {loading ? (
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="w-5 h-5 animate-spin text-[#94A3B8]" />
+        </div>
+      ) : requests.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 text-center bg-white rounded-xl border border-[#E2E8F0]">
+          <Inbox className="w-8 h-8 text-[#CBD5E1] mb-3" />
+          <p className="text-sm font-medium text-[#374151]">No {statusFilter === 'pending' ? 'pending ' : ''}requests</p>
+          <p className="text-xs text-[#94A3B8] mt-1">
+            {claimType === 'lead_pool'
+              ? 'SDRs can request assignment to unassigned orgs via org search.'
+              : 'SDRs can request data enrichment for orgs not yet in the system.'}
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {requests.map(req => {
+            const orgName  = req.org?.name ?? req.org_name_requested ?? '—'
+            const isPending = req.status === 'pending'
+            const isActioning = actioning === req.id
+
+            return (
+              <div key={req.id} className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm p-4">
+                <div className="flex items-start gap-4">
+
+                  {/* Info */}
+                  <div className="flex-1 min-w-0 space-y-1.5">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[13px] font-semibold text-[#0F172A]">{orgName}</span>
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${CLAIM_STATUS_COLORS[req.status] ?? 'bg-[#F1F5F9] text-[#475569]'}`}>
+                        {req.status.charAt(0).toUpperCase() + req.status.slice(1)}
+                      </span>
+                    </div>
+
+                    <div className="flex flex-wrap gap-x-3 text-[11px] text-[#94A3B8]">
+                      <span>From: <span className="text-[#374151] font-medium">{req.sdr?.name ?? '—'}</span></span>
+                      {req.org?.location && (
+                        <span className="flex items-center gap-1">
+                          <MapPin className="w-3 h-3" />{req.org.location}
+                        </span>
+                      )}
+                      <span>{new Date(req.requested_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                    </div>
+
+                    {req.sdr_notes && (
+                      <p className="text-[11px] text-[#64748B] bg-[#F8FAFC] rounded-lg px-2.5 py-1.5 border border-[#F1F5F9]">
+                        <span className="font-medium text-[#374151]">SDR note:</span> {req.sdr_notes}
+                      </p>
+                    )}
+
+                    {req.org?.thematic_areas && req.org.thematic_areas.length > 0 && (
+                      <div className="flex flex-wrap gap-1 pt-0.5">
+                        {req.org.thematic_areas.slice(0, 4).map((t: string) => (
+                          <span key={t} className="text-[10px] bg-[#EFF6FF] text-[#1A56DB] px-1.5 py-0.5 rounded-full">{t}</span>
+                        ))}
+                      </div>
+                    )}
+
+                    {!isPending && (
+                      <p className="text-[10px] text-[#94A3B8]">
+                        {req.status.charAt(0).toUpperCase() + req.status.slice(1)} by {req.reviewer?.name ?? 'Admin'}
+                        {req.reviewed_at ? ` · ${new Date(req.reviewed_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}` : ''}
+                        {req.admin_note ? ` · "${req.admin_note}"` : ''}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Actions — pending only */}
+                  {isPending && (
+                    <div className="shrink-0 flex flex-col gap-2 items-end">
+                      <input
+                        value={notes[req.id] ?? ''}
+                        onChange={e => setNotes(n => ({ ...n, [req.id]: e.target.value }))}
+                        placeholder="Admin note (optional)"
+                        className="w-52 px-2.5 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20 text-right"
+                      />
+                      <div className="flex gap-1.5">
+                        {claimType === 'data_enrichment' ? (
+                          <>
+                            <button
+                              onClick={() => action(req.id, 'fulfilled')}
+                              disabled={isActioning}
+                              className="flex items-center gap-1 px-3 py-1.5 bg-[#1A56DB] text-white text-[11px] font-semibold rounded-lg hover:bg-[#1e40af] disabled:opacity-60 transition-colors"
+                            >
+                              {isActioning ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
+                              Mark Fulfilled
+                            </button>
+                            <button
+                              onClick={() => action(req.id, 'rejected')}
+                              disabled={isActioning}
+                              className="flex items-center gap-1 px-3 py-1.5 border border-[#E2E8F0] text-[#64748B] text-[11px] font-semibold rounded-lg hover:bg-[#F8FAFC] disabled:opacity-60 transition-colors"
+                            >
+                              <XCircle className="w-3 h-3" />
+                              Reject
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => action(req.id, 'approved')}
+                              disabled={isActioning}
+                              className="flex items-center gap-1 px-3 py-1.5 bg-[#1A56DB] text-white text-[11px] font-semibold rounded-lg hover:bg-[#1e40af] disabled:opacity-60 transition-colors"
+                            >
+                              {isActioning ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
+                              Approve &amp; Assign
+                            </button>
+                            <button
+                              onClick={() => action(req.id, 'rejected')}
+                              disabled={isActioning}
+                              className="flex items-center gap-1 px-3 py-1.5 border border-[#E2E8F0] text-[#64748B] text-[11px] font-semibold rounded-lg hover:bg-[#F8FAFC] disabled:opacity-60 transition-colors"
+                            >
+                              <XCircle className="w-3 h-3" />
+                              Reject
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          })}
         </div>
       )}
     </div>
