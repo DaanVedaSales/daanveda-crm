@@ -13,8 +13,8 @@ export const ORG_STATUS_CONFIG: Record<string, { label: string; className: strin
   in_pipeline:   { label: 'In Pipeline',     className: 'bg-[#EFF6FF] text-[#1D4ED8]' },
   demo_booked:   { label: 'Demo Booked',     className: 'bg-[#F3E8FF] text-[#6B21A8]' },
   with_sdr:      { label: 'With SDR',        className: 'bg-[#FEF3C7] text-[#92400E]' },
-  in_lead_pool:  { label: 'Lead Pool',       className: 'bg-[#ECFDF5] text-[#065F46]' },
-  in_database:   { label: 'In Database',     className: 'bg-[#F8FAFC] text-[#475569] border border-[#E2E8F0]' },
+  in_lead_pool:  { label: 'Unassigned',      className: 'bg-[#ECFDF5] text-[#047857] border border-[#6EE7B7]' },
+  in_database:   { label: 'Not in Pipeline', className: 'bg-[#F8FAFC] text-[#64748B] border border-[#E2E8F0]' },
 }
 
 interface OrgSearchInputProps {

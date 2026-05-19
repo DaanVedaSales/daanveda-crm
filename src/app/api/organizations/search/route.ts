@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceClient } from '@/lib/supabase/server'
 
 // GET /api/organizations/search?q=query&limit=8
 // Fuzzy search across all orgs using pg_trgm + ILIKE fallback
@@ -40,17 +40,21 @@ export async function GET(req: NextRequest) {
     return NextResponse.json([])
   }
 
-  const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const authClient = createClient()
+  const { data: { user } } = await authClient.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   // Verify authenticated
-  const { data: profile } = await supabase
+  const { data: profile } = await authClient
     .from('users')
     .select('id, role')
     .eq('auth_id', user.id)
     .single()
   if (!profile) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  // Use service client for org search so status derivation is role-agnostic —
+  // every viewer (SDR, Closer, Admin) sees the true pipeline status of each org
+  const supabase = createServiceClient()
 
   // ── 1. Fetch candidate orgs via pg_trgm similarity + ILIKE fallback ──────
   // We use a raw RPC call via execute_sql equivalent — but since we don't have
