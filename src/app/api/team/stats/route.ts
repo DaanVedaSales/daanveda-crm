@@ -93,16 +93,20 @@ export async function GET(request: Request) {
 
       const { count: demosAttended } = await attendedQuery
 
-      // 2. Demo outcomes (attended vs no_show) — all time for this SDR's demos
-      //    (no_show attribution is on demo record, not time-bounded — reflects lifetime quality)
-      const { data: allDemoOutcomes } = await supabase
+      // 2. Demo outcomes (attended vs no_show) — period-scoped to match selected filter
+      let demoOutcomesQuery = supabase
         .from('demos')
         .select('id, status')
         .eq('sdr_id', sdr.id)
         .in('status', ['attended', 'no_show'])
 
-      const totalAttended = (allDemoOutcomes ?? []).filter(d => d.status === 'attended').length
-      const totalNoShow = (allDemoOutcomes ?? []).filter(d => d.status === 'no_show').length
+      if (rangeStart) demoOutcomesQuery = demoOutcomesQuery.gte('created_at', rangeStart)
+      if (rangeEnd)   demoOutcomesQuery = demoOutcomesQuery.lte('created_at', rangeEnd)
+
+      const { data: periodDemoOutcomes } = await demoOutcomesQuery
+
+      const totalAttended = (periodDemoOutcomes ?? []).filter(d => d.status === 'attended').length
+      const totalNoShow   = (periodDemoOutcomes ?? []).filter(d => d.status === 'no_show').length
       const totalCompleted = totalAttended + totalNoShow
       const showUpRate = totalCompleted >= 3
         ? Math.round((totalAttended / totalCompleted) * 100)
@@ -112,7 +116,7 @@ export async function GET(request: Request) {
       let activitiesQuery = supabase
         .from('activities')
         .select('id', { count: 'exact', head: true })
-        .eq('performed_by', sdr.id)
+        .eq('user_id', sdr.id)
         .in('activity_type', ['call', 'email', 'whatsapp', 'linkedin'])
 
       if (rangeStart) activitiesQuery = activitiesQuery.gte('created_at', rangeStart)
@@ -120,27 +124,29 @@ export async function GET(request: Request) {
 
       const { count: leadsReachedOut } = await activitiesQuery
 
-      // 4. Conversion bonus — deals Won/Converted sourced from this SDR's demos
+      // 4. Deals sourced from this SDR's demos in period (join via demo_id)
       const demoIds = (demosInPeriod ?? []).map(d => d.id)
 
       let unqualifiedCount = 0
       let convertedCount = 0
 
       if (demoIds.length > 0) {
+        // Unqualified = closer explicitly marked the deal as unqualified
         const { count: unq } = await supabase
           .from('deals')
           .select('id', { count: 'exact', head: true })
-          .eq('sdr_id', sdr.id)
+          .in('demo_id', demoIds)
           .eq('stage', 'unqualified')
 
+        // Already converted = deal reached won/converted
         const { count: conv } = await supabase
           .from('deals')
           .select('id', { count: 'exact', head: true })
-          .eq('sdr_id', sdr.id)
+          .in('demo_id', demoIds)
           .in('stage', ['won', 'converted'])
 
         unqualifiedCount = unq ?? 0
-        convertedCount = conv ?? 0
+        convertedCount   = conv ?? 0
       }
 
       // 5. Cold call → demo %
@@ -148,6 +154,11 @@ export async function GET(request: Request) {
       const totalDemos = demosBooked ?? 0
       const coldCallToDemo = totalLeads > 0
         ? Math.round((totalDemos / totalLeads) * 100)
+        : null
+
+      // 5b. Unqualified lead % = unqualified deals / demos booked × 100
+      const unqualifiedPct = totalDemos > 0
+        ? Math.round((unqualifiedCount / totalDemos) * 100)
         : null
 
       // 6. Achievement %
@@ -167,6 +178,7 @@ export async function GET(request: Request) {
         no_shows: totalNoShow,
         show_up_rate: showUpRate,
         unqualified: unqualifiedCount,
+        unqualified_pct: unqualifiedPct,
         already_converted: convertedCount,
         achievement_pct: achievementPct,
       }

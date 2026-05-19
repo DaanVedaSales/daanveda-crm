@@ -46,6 +46,7 @@ interface SdrStat {
   no_shows: number
   show_up_rate: number | null
   unqualified: number
+  unqualified_pct: number | null
   already_converted: number
   achievement_pct: number | null
 }
@@ -153,10 +154,21 @@ function PeriodBar({
 }
 
 // ── SDR Detail Panel ───────────────────────────────────────────────────────────
-function SdrDetailPanel({ sdr, onClose }: { sdr: SdrStat; onClose: () => void }) {
+function SdrDetailPanel({
+  sdr, period, customStart, customEnd, onClose
+}: {
+  sdr: SdrStat
+  period: Period
+  customStart: string
+  customEnd: string
+  onClose: () => void
+}) {
   const pct = sdr.achievement_pct ?? 0
   const isPipRisk = pct < 60
   const isBehind = pct >= 60 && pct < 85
+  const periodLabel = period === 'custom' && customStart && customEnd
+    ? `${customStart} → ${customEnd}`
+    : PERIOD_LABELS[period]
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
       <div className="absolute inset-0 bg-[#0F172A]/30 backdrop-blur-[2px]" onClick={onClose} />
@@ -170,6 +182,7 @@ function SdrDetailPanel({ sdr, onClose }: { sdr: SdrStat; onClose: () => void })
               <div>
                 <p className="font-semibold text-[14px] text-[#0F172A]">{sdr.name}</p>
                 <p className="text-[11px] text-[#94A3B8]">SDR · {sdr.monthly_demo_target ?? '—'} demo target</p>
+                <p className="text-[10px] text-[#1A56DB] font-medium mt-0.5">📅 {periodLabel}</p>
               </div>
             </div>
             <div className="flex items-center gap-2 mt-1">
@@ -334,6 +347,14 @@ function StatisticsTab() {
 
   useEffect(() => { fetchStats() }, [fetchStats])
 
+  // Keep panel data in sync when period changes and sdrs list refreshes
+  useEffect(() => {
+    if (selectedSdr) {
+      const updated = sdrs.find(s => s.user_id === selectedSdr.user_id)
+      if (updated) setSelectedSdr(updated)
+    }
+  }, [sdrs])
+
   const totalRevenue = closers.reduce((s, c) => s + (c.revenue_won ?? 0), 0)
 
   function AchBar({ pct }: { pct: number | null }) {
@@ -365,7 +386,7 @@ function StatisticsTab() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-[#F8FAFC] border-b border-[#F1F5F9]">
-                {['SDR', 'Demos Booked', 'Done', 'No-Shows', 'Show-up %', 'Cold→Demo %', 'Achievement', ''].map((h, i) => (
+                {['SDR', 'Demos Booked', 'Done', 'No-Shows', 'Show-up %', 'Unqualified %', 'Achievement', ''].map((h, i) => (
                   <th key={i} className={cn('px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-[#94A3B8]', i === 0 ? 'text-left' : 'text-center')}>{h}</th>
                 ))}
               </tr>
@@ -404,8 +425,11 @@ function StatisticsTab() {
                         : <span className="text-[#CBD5E1] text-[10px]">n/a</span>
                       }
                     </td>
-                    <td className="px-4 py-3 text-center text-[12px] text-[#64748B]">
-                      {sdr.cold_call_to_demo_pct !== null ? `${sdr.cold_call_to_demo_pct}%` : '—'}
+                    <td className="px-4 py-3 text-center text-[12px]">
+                      {sdr.unqualified_pct !== null
+                        ? <span className="font-semibold text-[#EF4444]">{sdr.unqualified_pct}%</span>
+                        : <span className="text-[#CBD5E1] text-[10px]">—</span>
+                      }
                     </td>
                     <td className="px-4 py-3"><AchBar pct={sdr.achievement_pct} /></td>
                     <td className="px-3 py-3"><ChevronRight className="w-3.5 h-3.5 text-[#CBD5E1]" strokeWidth={2} /></td>
@@ -468,7 +492,15 @@ function StatisticsTab() {
         </div>
       </div>
 
-      {selectedSdr && <SdrDetailPanel sdr={selectedSdr} onClose={() => setSelectedSdr(null)} />}
+      {selectedSdr && (
+        <SdrDetailPanel
+          sdr={selectedSdr}
+          period={period}
+          customStart={customStart}
+          customEnd={customEnd}
+          onClose={() => setSelectedSdr(null)}
+        />
+      )}
       {selectedCloser && <CloserDetailPanel closer={selectedCloser} totalRevenue={totalRevenue} onClose={() => setSelectedCloser(null)} />}
     </div>
   )
