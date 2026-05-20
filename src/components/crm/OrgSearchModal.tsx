@@ -408,11 +408,16 @@ export default function OrgSearchModal({ role, onClose }: OrgSearchModalProps) {
                       </div>
                     )}
 
-                    {/* ── SDR: Claim button for unassigned leads ── */}
-                    {role === 'sdr' && org.status === 'in_lead_pool' && (
+                    {/* ── SDR: Claim button for unassigned + in-database orgs ── */}
+                    {role === 'sdr' && (org.status === 'in_lead_pool' || org.status === 'in_database') && (
                       <div className="mt-2">
                         {!claim && (
                           <div className="space-y-1.5">
+                            <p className="text-[10px] text-[#94A3B8] italic">
+                              {org.status === 'in_lead_pool'
+                                ? 'This lead is unassigned — claim it and admin will assign it to you.'
+                                : 'This org is in our database but has no active lead — claim it to get started.'}
+                            </p>
                             <input
                               value={claimNotes[org.id] ?? ''}
                               onChange={e => setClaimNotes(n => ({ ...n, [org.id]: e.target.value }))}
@@ -423,7 +428,7 @@ export default function OrgSearchModal({ role, onClose }: OrgSearchModalProps) {
                               onClick={() => claimLead(org)}
                               className="px-3.5 py-1.5 bg-[#047857] text-white text-[11px] font-semibold rounded-lg hover:bg-[#065F46] transition-colors"
                             >
-                              Claim this lead →
+                              Claim →
                             </button>
                           </div>
                         )}
@@ -445,21 +450,14 @@ export default function OrgSearchModal({ role, onClose }: OrgSearchModalProps) {
                       </div>
                     )}
 
-                    {/* ── SDR: context notes for other statuses ── */}
-                    {role === 'sdr' && org.status !== 'in_lead_pool' && org.status !== 'in_database' && (
+                    {/* ── SDR: context notes for locked statuses ── */}
+                    {role === 'sdr' && !['in_lead_pool', 'in_database'].includes(org.status) && (
                       <p className="mt-1 text-[10px] text-[#94A3B8] italic">
                         {org.status === 'active_client'  && 'This organisation is already a DaanVeda client.'}
                         {org.status === 'with_sdr'       && `Being worked by ${org.assignee_name ?? 'another SDR'}.`}
                         {org.status === 'demo_booked'    && 'A demo has been booked for this org.'}
                         {org.status === 'in_pipeline'    && `In Closer's pipeline${org.deal_stage ? ` · ${org.deal_stage.replace(/_/g, ' ')}` : ''}.`}
                         {(org.status === 'lost' || org.status === 'ghosted') && 'Previously worked — contact admin to re-engage.'}
-                      </p>
-                    )}
-
-                    {/* ── SDR: for in_database orgs, nudge to enrichment ── */}
-                    {role === 'sdr' && org.status === 'in_database' && (
-                      <p className="mt-1 text-[10px] text-[#94A3B8] italic">
-                        No lead record yet — it's in the raw database. Use the enrichment option below to flag it.
                       </p>
                     )}
                   </div>
