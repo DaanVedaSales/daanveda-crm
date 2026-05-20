@@ -104,12 +104,62 @@ function PasteGrid({
   const [cells, setCells] = useState<string[][]>(
     Array(DEFAULT_ROWS).fill(null).map(() => Array(DEFAULT_COLS).fill(''))
   )
+
+  // ── Row-number selection (whole rows, click / shift-click) ─────────────────
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set())
   const lastSelectedRow = useRef<number | null>(null)
-  const gridRef = useRef<HTMLDivElement>(null)
+
+  // ── Cell-range drag selection ──────────────────────────────────────────────
+  // anchorCell: where the drag started; focusCell: current drag end (or click target)
+  type Cell = { r: number; c: number }
+  const [anchorCell, setAnchorCell] = useState<Cell | null>(null)
+  const [focusCell,  setFocusCell]  = useState<Cell | null>(null)
+  const isDraggingCell = useRef(false)
+
+  // Compute the normalised selection rectangle from anchor + focus
+  function getCellRange(): { rMin: number; rMax: number; cMin: number; cMax: number } | null {
+    if (!anchorCell || !focusCell) return null
+    return {
+      rMin: Math.min(anchorCell.r, focusCell.r),
+      rMax: Math.max(anchorCell.r, focusCell.r),
+      cMin: Math.min(anchorCell.c, focusCell.c),
+      cMax: Math.max(anchorCell.c, focusCell.c),
+    }
+  }
+
+  function isCellInRange(r: number, c: number): boolean {
+    const range = getCellRange()
+    if (!range) return false
+    return r >= range.rMin && r <= range.rMax && c >= range.cMin && c <= range.cMax
+  }
+
+  // Stop drag on global mouseup
+  useEffect(() => {
+    function onMouseUp() { isDraggingCell.current = false }
+    document.addEventListener('mouseup', onMouseUp)
+    return () => document.removeEventListener('mouseup', onMouseUp)
+  }, [])
+
+  function handleCellMouseDown(r: number, c: number, e: React.MouseEvent) {
+    // Don't steal focus from the input itself — only handle selection setup
+    // Clear row selection when starting a cell drag
+    setSelectedRows(new Set())
+    setAnchorCell({ r, c })
+    setFocusCell({ r, c })
+    isDraggingCell.current = true
+  }
+
+  function handleCellMouseEnter(r: number, c: number) {
+    if (isDraggingCell.current) {
+      setFocusCell({ r, c })
+    }
+  }
 
   // ── Row number click: toggle / shift-range select ─────────────────────────
   function handleRowNumberClick(ri: number, e: React.MouseEvent) {
+    // Clear cell range when switching to row mode
+    setAnchorCell(null)
+    setFocusCell(null)
     if (e.shiftKey && lastSelectedRow.current !== null) {
       const from = Math.min(lastSelectedRow.current, ri)
       const to   = Math.max(lastSelectedRow.current, ri)
@@ -128,57 +178,108 @@ function PasteGrid({
     }
   }
 
+  const gridRef = useRef<HTMLDivElement>(null)
+
   // ── Keyboard shortcuts on the grid container ──────────────────────────────
   function handleGridKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
     const isMac = navigator.platform.toUpperCase().includes('MAC')
     const mod   = isMac ? e.metaKey : e.ctrlKey
+    const range = getCellRange()
+    const hasRowSel = selectedRows.size > 0
+    const hasCellSel = range !== null
 
-    // Delete / Backspace — clear selected rows
-    if ((e.key === 'Delete' || e.key === 'Backspace') && selectedRows.size > 0) {
-      // Only fire if focus is NOT inside an input (let inputs handle their own delete)
+    // Delete / Backspace — clear selected rows OR cell range
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      // If focus is inside an input, let the input handle it
       if ((e.target as HTMLElement).tagName === 'INPUT') return
-      e.preventDefault()
-      setCells(prev => {
-        const next = prev.map(r => [...r])
-        selectedRows.forEach(ri => { next[ri] = Array(colCount).fill('') })
-        return next
-      })
-      return
+
+      if (hasCellSel && range) {
+        e.preventDefault()
+        setCells(prev => {
+          const next = prev.map(r => [...r])
+          for (let r = range.rMin; r <= range.rMax; r++) {
+            for (let c = range.cMin; c <= range.cMax; c++) {
+              next[r][c] = ''
+            }
+          }
+          return next
+        })
+        return
+      }
+      if (hasRowSel) {
+        e.preventDefault()
+        setCells(prev => {
+          const next = prev.map(r => [...r])
+          selectedRows.forEach(ri => { next[ri] = Array(colCount).fill('') })
+          return next
+        })
+        return
+      }
     }
 
     if (!mod) return
 
-    // Cmd/Ctrl+C — copy selected rows as TSV
-    if (e.key === 'c' && selectedRows.size > 0) {
-      e.preventDefault()
-      const tsv = [...selectedRows].sort((a, b) => a - b)
-        .map(ri => cells[ri].join('\t'))
-        .join('\n')
-      navigator.clipboard.writeText(tsv).catch(() => {})
-      return
+    // Cmd/Ctrl+C — copy
+    if (e.key === 'c') {
+      if (hasCellSel && range) {
+        e.preventDefault()
+        const tsv = []
+        for (let r = range.rMin; r <= range.rMax; r++) {
+          tsv.push(cells[r].slice(range.cMin, range.cMax + 1).join('\t'))
+        }
+        navigator.clipboard.writeText(tsv.join('\n')).catch(() => {})
+        return
+      }
+      if (hasRowSel) {
+        e.preventDefault()
+        const tsv = [...selectedRows].sort((a, b) => a - b)
+          .map(ri => cells[ri].join('\t'))
+          .join('\n')
+        navigator.clipboard.writeText(tsv).catch(() => {})
+        return
+      }
     }
 
     // Cmd/Ctrl+X — cut: copy then clear
-    if (e.key === 'x' && selectedRows.size > 0) {
-      e.preventDefault()
-      const tsv = [...selectedRows].sort((a, b) => a - b)
-        .map(ri => cells[ri].join('\t'))
-        .join('\n')
-      navigator.clipboard.writeText(tsv).catch(() => {})
-      setCells(prev => {
-        const next = prev.map(r => [...r])
-        selectedRows.forEach(ri => { next[ri] = Array(colCount).fill('') })
-        return next
-      })
-      return
+    if (e.key === 'x') {
+      if (hasCellSel && range) {
+        e.preventDefault()
+        const tsv = []
+        for (let r = range.rMin; r <= range.rMax; r++) {
+          tsv.push(cells[r].slice(range.cMin, range.cMax + 1).join('\t'))
+        }
+        navigator.clipboard.writeText(tsv.join('\n')).catch(() => {})
+        setCells(prev => {
+          const next = prev.map(r => [...r])
+          for (let r = range.rMin; r <= range.rMax; r++) {
+            for (let c = range.cMin; c <= range.cMax; c++) {
+              next[r][c] = ''
+            }
+          }
+          return next
+        })
+        return
+      }
+      if (hasRowSel) {
+        e.preventDefault()
+        const tsv = [...selectedRows].sort((a, b) => a - b)
+          .map(ri => cells[ri].join('\t'))
+          .join('\n')
+        navigator.clipboard.writeText(tsv).catch(() => {})
+        setCells(prev => {
+          const next = prev.map(r => [...r])
+          selectedRows.forEach(ri => { next[ri] = Array(colCount).fill('') })
+          return next
+        })
+        return
+      }
     }
 
-    // Cmd/Ctrl+V — paste clipboard starting at first selected row (or row 0)
+    // Cmd/Ctrl+V — paste clipboard starting at anchor cell or first selected row
     if (e.key === 'v') {
       e.preventDefault()
-      const startRow = selectedRows.size > 0
-        ? Math.min(...selectedRows)
-        : 0
+      const startRow = anchorCell ? anchorCell.r : (hasRowSel ? Math.min(...selectedRows) : 0)
+      const startCol = anchorCell ? anchorCell.c : 0
       navigator.clipboard.readText().then(text => {
         const pastedRows = text.split('\n').map(r => r.split('\t'))
         setCells(prev => {
@@ -186,7 +287,7 @@ function PasteGrid({
           pastedRows.forEach((row, ri) => {
             row.forEach((val, ci) => {
               const tr = startRow + ri
-              const tc = ci
+              const tc = startCol + ci
               if (tr < next.length && tc < colCount) {
                 next[tr][tc] = val.trim().replace(/\r/g, '')
               }
@@ -260,17 +361,27 @@ function PasteGrid({
   }
 
   const selCount = selectedRows.size
+  const hasCellRangeActive = anchorCell !== null
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <p className="text-xs text-[#64748B]">
-          Assign column headers, then paste data from Excel/Sheets into any cell.
-          Click row numbers to select · Shift+click for range · Del to clear · ⌘C/X/V for clipboard ops.
+          Assign column headers, then paste data from Excel/Sheets.
+          <span className="ml-1 text-[#94A3B8]">Drag cells to select range · Click row # for whole rows · ⌘C/X/V clipboard · Del to clear</span>
         </p>
-        {selCount > 0 && (
+        {(selCount > 0 || anchorCell) && (
           <span className="shrink-0 ml-3 text-[11px] font-medium text-[#1A56DB] bg-blue-50 border border-blue-100 px-2.5 py-1 rounded-full">
-            {selCount} row{selCount > 1 ? 's' : ''} selected
+            {anchorCell
+              ? (() => {
+                  const r = getCellRange()
+                  if (!r) return '1 cell'
+                  const rows = r.rMax - r.rMin + 1
+                  const cols = r.cMax - r.cMin + 1
+                  return rows === 1 && cols === 1 ? '1 cell' : `${rows}×${cols} cells`
+                })()
+              : `${selCount} row${selCount > 1 ? 's' : ''} selected`
+            }
           </span>
         )}
       </div>
@@ -318,17 +429,36 @@ function PasteGrid({
                   >
                     {ri + 1}
                   </td>
-                  {row.map((cell, ci) => (
-                    <td key={ci} className={`border-r border-b border-[#F1F5F9] p-0 ${isSelected ? 'bg-blue-50' : ''}`}>
-                      <input
-                        value={cell}
-                        onChange={e => setCell(ri, ci, e.target.value)}
-                        onPaste={e => handleCellPaste(e, ri, ci)}
-                        className="w-full px-2 py-1 text-xs bg-transparent focus:outline-none focus:bg-blue-100 min-w-[140px]"
-                        placeholder={ri === 0 ? (DB_FIELDS.find(f => f.value === headers[ci])?.label ?? '') : ''}
-                      />
-                    </td>
-                  ))}
+                  {row.map((cell, ci) => {
+                    const inCellRange = isCellInRange(ri, ci)
+                    const cellBg = inCellRange
+                      ? 'bg-blue-100'
+                      : isSelected
+                      ? 'bg-blue-50'
+                      : ''
+                    return (
+                      <td
+                        key={ci}
+                        className={`border-r border-b border-[#F1F5F9] p-0 ${cellBg} select-none`}
+                        onMouseDown={e => handleCellMouseDown(ri, ci, e)}
+                        onMouseEnter={() => handleCellMouseEnter(ri, ci)}
+                      >
+                        <input
+                          value={cell}
+                          onChange={e => setCell(ri, ci, e.target.value)}
+                          onPaste={e => handleCellPaste(e, ri, ci)}
+                          onFocus={() => {
+                            // Clicking into an input = select just that cell
+                            setSelectedRows(new Set())
+                            setAnchorCell({ r: ri, c: ci })
+                            setFocusCell({ r: ri, c: ci })
+                          }}
+                          className={`w-full px-2 py-1 text-xs bg-transparent focus:outline-none focus:bg-blue-100 min-w-[140px] ${inCellRange ? 'bg-blue-100' : ''}`}
+                          placeholder={ri === 0 ? (DB_FIELDS.find(f => f.value === headers[ci])?.label ?? '') : ''}
+                        />
+                      </td>
+                    )
+                  })}
                 </tr>
               )
             })}

@@ -1,11 +1,11 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import TopBar from '@/components/layout/TopBar'
 import { createClient } from '@/lib/supabase/client'
 import { LEAD_STATUS_LABELS, LEAD_STATUS_COLORS, INTEREST_SIGNAL_LABELS, INTEREST_SIGNAL_COLORS } from '@/lib/constants'
 import { formatRelativeDate, cn } from '@/lib/utils'
-import { Search, ChevronRight, Plus, Pencil } from 'lucide-react'
+import { Search, ChevronRight, Plus, Pencil, Send } from 'lucide-react'
 import DateTimePicker from '@/components/ui/DateTimePicker'
 import OrgSearchInput from '@/components/crm/OrgSearchInput'
 import OrgSearchModal from '@/components/crm/OrgSearchModal'
@@ -14,6 +14,7 @@ import type { Lead, Organization, InterestSignal, LeadStatus } from '@/types/dat
 
 interface LeadWithOrg extends Lead {
   organization: Organization
+  primaryContact?: { name: string | null; phone: string | null } | null
 }
 
 export default function SDRLeadsPage() {
@@ -33,7 +34,9 @@ export default function SDRLeadsPage() {
     setFiltered(leads.filter(l =>
       l.organization?.name?.toLowerCase().includes(q) ||
       l.organization?.location?.toLowerCase().includes(q) ||
-      l.status?.toLowerCase().includes(q)
+      l.status?.toLowerCase().includes(q) ||
+      l.primaryContact?.name?.toLowerCase().includes(q) ||
+      l.primaryContact?.phone?.toLowerCase().includes(q)
     ))
   }, [search, leads])
 
@@ -49,8 +52,31 @@ export default function SDRLeadsPage() {
     const data: LeadWithOrg[] = await res.json()
     // Only show active working leads — demo_booked/call_again/not_reachable go to other views
     const active = (data ?? []).filter(l => !EXCLUDE_FROM_ASSIGNED.has(l.status))
-    setLeads(active)
-    setFiltered(active)
+
+    // Fetch primary contacts for KDM name/phone search
+    const orgIds = active.map(l => l.org_id).filter(Boolean)
+    if (orgIds.length > 0) {
+      const { data: contactData } = await supabase
+        .from('contacts')
+        .select('org_id, name, phone')
+        .in('org_id', orgIds)
+        .eq('is_primary', true)
+
+      const contactMap: Record<string, { name: string | null; phone: string | null }> = {}
+      ;(contactData ?? []).forEach((c: any) => {
+        if (!contactMap[c.org_id]) contactMap[c.org_id] = { name: c.name, phone: c.phone }
+      })
+
+      const withContacts = active.map(l => ({
+        ...l,
+        primaryContact: contactMap[l.org_id] ?? null,
+      }))
+      setLeads(withContacts)
+      setFiltered(withContacts)
+    } else {
+      setLeads(active)
+      setFiltered(active)
+    }
     setLoading(false)
   }
 
@@ -92,7 +118,7 @@ export default function SDRLeadsPage() {
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Search by org, location, or status..."
+              placeholder="Search by org, contact name, phone, or status..."
               className="w-full pl-9 pr-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20 focus:border-[#1A56DB]"
             />
           </div>
@@ -482,9 +508,12 @@ function LeadDetailPanel({
   onClose: () => void
   onRefresh: () => void
 }) {
-  const [tab, setTab] = useState<'overview' | 'activity' | 'contacts'>('overview')
+  const [tab, setTab] = useState<'overview' | 'comments' | 'contacts'>('overview')
   const [activities, setActivities] = useState<any[]>([])
   const [contacts, setContacts] = useState<any[]>([])
+  const [comments, setComments] = useState<any[]>([])
+  const [commentText, setCommentText] = useState('')
+  const [postingComment, setPostingComment] = useState(false)
   const [showLogActivity, setShowLogActivity] = useState(false)
   const [showBookDemo, setShowBookDemo] = useState(false)
   const [showEditLead, setShowEditLead] = useState(false)
@@ -495,6 +524,32 @@ function LeadDetailPanel({
       .then(r => r.json())
       .then(d => { setActivities(d.activities ?? []); setContacts(d.contacts ?? []) })
   }, [lead.id])
+
+  useEffect(() => {
+    if (tab === 'comments') fetchComments()
+  }, [tab, lead.id])
+
+  function fetchComments() {
+    fetch(`/api/leads/comments?lead_id=${lead.id}`)
+      .then(r => r.json())
+      .then(d => setComments(Array.isArray(d) ? d : []))
+  }
+
+  async function postComment() {
+    if (!commentText.trim()) return
+    setPostingComment(true)
+    const res = await fetch('/api/leads/comments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lead_id: lead.id, comment: commentText.trim() }),
+    })
+    if (res.ok) {
+      const newComment = await res.json()
+      setComments(prev => [newComment, ...prev])
+      setCommentText('')
+    }
+    setPostingComment(false)
+  }
 
   const org = lead.organization
 
@@ -551,7 +606,7 @@ function LeadDetailPanel({
 
       {/* Tabs */}
       <div className="flex border-b border-[#E2E8F0]">
-        {(['overview', 'activity', 'contacts'] as const).map(t => (
+        {(['overview', 'comments', 'contacts'] as const).map(t => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -580,17 +635,40 @@ function LeadDetailPanel({
           </div>
         )}
 
-        {tab === 'activity' && (
-          <div className="space-y-3">
-            {activities.length === 0 && <p className="text-sm text-[#94A3B8]">No activities logged yet.</p>}
-            {activities.map((a: any) => (
-              <div key={a.id} className="flex gap-3">
-                <div className="w-1.5 h-1.5 rounded-full bg-[#1A56DB] mt-1.5 shrink-0" />
-                <div>
-                  <p className="text-xs font-medium text-[#0F172A] capitalize">{a.activity_type.replace('_', ' ')} · {a.channel ?? ''}</p>
-                  <p className="text-xs text-[#64748B] mt-0.5">{a.notes}</p>
-                  <p className="text-[10px] text-[#94A3B8] mt-0.5">{a.user?.name} · {new Date(a.created_at).toLocaleString()}</p>
-                </div>
+        {tab === 'comments' && (
+          <div className="flex flex-col gap-3">
+            {/* Post new comment */}
+            <div className="flex gap-2 items-start">
+              <textarea
+                value={commentText}
+                onChange={e => setCommentText(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) postComment()
+                }}
+                placeholder="Add a note or comment... (⌘Enter to post)"
+                rows={2}
+                className="flex-1 px-3 py-2 text-xs border border-[#E2E8F0] rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20 focus:border-[#1A56DB]"
+              />
+              <button
+                onClick={postComment}
+                disabled={postingComment || !commentText.trim()}
+                className="p-2 bg-[#1A56DB] text-white rounded-lg hover:bg-[#1A4FBF] disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"
+                title="Post comment"
+              >
+                <Send className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {/* Comments list — latest on top */}
+            {comments.length === 0 && (
+              <p className="text-xs text-[#94A3B8] text-center py-4">No comments yet. Add your first note above.</p>
+            )}
+            {comments.map((c: any) => (
+              <div key={c.id} className="bg-[#F8FAFC] rounded-xl p-3 border border-[#F1F5F9]">
+                <p className="text-xs text-[#0F172A] leading-relaxed">{c.comment}</p>
+                <p className="text-[10px] text-[#94A3B8] mt-1.5">
+                  {c.user?.name ?? 'You'} · {new Date(c.created_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true })}
+                </p>
               </div>
             ))}
           </div>

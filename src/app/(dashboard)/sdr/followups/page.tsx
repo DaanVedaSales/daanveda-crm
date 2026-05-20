@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { LEAD_STATUS_LABELS, LEAD_STATUS_COLORS } from '@/lib/constants'
 import type { LeadStatus } from '@/types/database'
 import { cn } from '@/lib/utils'
-import { CheckCircle } from 'lucide-react'
+import { CheckCircle, ChevronDown, ChevronUp } from 'lucide-react'
 
 interface FollowupLead {
   id: string
@@ -15,6 +15,60 @@ interface FollowupLead {
   follow_up_date: string | null
   updated_at: string | null
   organization: { name: string; location: string | null }
+}
+
+// ── Expandable detail for a follow-up lead ────────────────────────────────────
+function LeadExpandedDetail({ leadId }: { leadId: string }) {
+  const [data, setData] = useState<{ contacts: any[]; activities: any[] } | null>(null)
+
+  useEffect(() => {
+    fetch(`/api/leads/${leadId}`)
+      .then(r => r.json())
+      .then(d => setData({ contacts: d.contacts ?? [], activities: d.activities ?? [] }))
+  }, [leadId])
+
+  if (!data) {
+    return <div className="px-5 pb-4"><div className="h-12 bg-[#F1F5F9] rounded-lg skeleton" /></div>
+  }
+
+  const primary = data.contacts.find((c: any) => c.is_primary) ?? data.contacts[0]
+
+  return (
+    <div className="px-5 pb-4 pt-2 border-t border-[#F1F5F9] space-y-3">
+      {/* KDM Contact */}
+      {primary && (
+        <div className="bg-[#F8FAFC] rounded-xl p-3 border border-[#E2E8F0]">
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8] mb-1.5">Key Decision Maker</p>
+          <p className="text-sm font-medium text-[#0F172A]">{primary.name}</p>
+          {primary.designation && <p className="text-xs text-[#64748B]">{primary.designation}</p>}
+          <div className="flex gap-3 mt-1 text-xs text-[#64748B]">
+            {primary.phone && <span>{primary.phone}</span>}
+            {primary.email && <span>{primary.email}</span>}
+          </div>
+        </div>
+      )}
+      {!primary && <p className="text-xs text-[#94A3B8]">No contact on record.</p>}
+
+      {/* Activity log */}
+      {data.activities.length > 0 && (
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8] mb-2">Recent Activity</p>
+          <div className="space-y-2 max-h-40 overflow-y-auto">
+            {data.activities.slice(0, 5).map((a: any) => (
+              <div key={a.id} className="flex gap-2">
+                <div className="w-1.5 h-1.5 rounded-full bg-[#1A56DB] mt-1.5 shrink-0" />
+                <div>
+                  <p className="text-xs font-medium text-[#0F172A] capitalize">{a.activity_type.replace('_', ' ')}{a.channel ? ` · ${a.channel}` : ''}</p>
+                  <p className="text-xs text-[#64748B]">{a.notes}</p>
+                  <p className="text-[10px] text-[#94A3B8]">{new Date(a.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
 
 function formatDate(d: string | null) {
@@ -111,33 +165,44 @@ export default function FollowupsPage() {
   }
 
   function LeadRow({ lead }: { lead: FollowupLead }) {
+    const [expanded, setExpanded] = useState(false)
     const since = daysSince(lead.updated_at)
     const isOverdue = lead.callback_date ? lead.callback_date < today : false
     const isToday = lead.callback_date === today
     return (
-      <div className="flex items-center justify-between px-5 py-3.5 hover:bg-[#F8FAFC] transition-colors border-b border-[#F1F5F9] last:border-0">
-        <div className="flex-1 min-w-0">
-          <p className="text-[13px] font-medium text-[#0F172A] truncate">{lead.organization?.name}</p>
-          <p className="text-[11px] text-[#94A3B8] mt-0.5">{lead.organization?.location}</p>
-        </div>
-        <div className="flex items-center gap-3 shrink-0 ml-4">
-          <span className={cn('text-[10px] px-2 py-0.5 rounded-full font-medium', LEAD_STATUS_COLORS[lead.status])}>
-            {LEAD_STATUS_LABELS[lead.status]}
-          </span>
-          {lead.callback_date ? (
-            <span className={cn(
-              'text-[12px] font-semibold min-w-[60px] text-right',
-              isOverdue ? 'text-[#EF4444]' : isToday ? 'text-[#1A56DB]' : 'text-[#64748B]'
-            )}>
-              {isOverdue && <span className="text-[10px] mr-1">Overdue</span>}
-              {formatDate(lead.callback_date)}
+      <div className="border-b border-[#F1F5F9] last:border-0">
+        <div
+          className="flex items-center justify-between px-5 py-3.5 hover:bg-[#F8FAFC] transition-colors cursor-pointer"
+          onClick={() => setExpanded(prev => !prev)}
+        >
+          <div className="flex-1 min-w-0">
+            <p className="text-[13px] font-medium text-[#0F172A] truncate">{lead.organization?.name}</p>
+            <p className="text-[11px] text-[#94A3B8] mt-0.5">{lead.organization?.location}</p>
+          </div>
+          <div className="flex items-center gap-3 shrink-0 ml-4">
+            <span className={cn('text-[10px] px-2 py-0.5 rounded-full font-medium', LEAD_STATUS_COLORS[lead.status])}>
+              {LEAD_STATUS_LABELS[lead.status]}
             </span>
-          ) : (
-            <span className="text-[12px] text-[#94A3B8] min-w-[60px] text-right">
-              {since !== null ? `${since}d ago` : '—'}
-            </span>
-          )}
+            {lead.callback_date ? (
+              <span className={cn(
+                'text-[12px] font-semibold min-w-[60px] text-right',
+                isOverdue ? 'text-[#EF4444]' : isToday ? 'text-[#1A56DB]' : 'text-[#64748B]'
+              )}>
+                {isOverdue && <span className="text-[10px] mr-1">Overdue</span>}
+                {formatDate(lead.callback_date)}
+              </span>
+            ) : (
+              <span className="text-[12px] text-[#94A3B8] min-w-[60px] text-right">
+                {since !== null ? `${since}d ago` : '—'}
+              </span>
+            )}
+            {expanded
+              ? <ChevronUp className="w-3.5 h-3.5 text-[#94A3B8]" />
+              : <ChevronDown className="w-3.5 h-3.5 text-[#94A3B8]" />
+            }
+          </div>
         </div>
+        {expanded && <LeadExpandedDetail leadId={lead.id} />}
       </div>
     )
   }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import TopBar from '@/components/layout/TopBar'
 import { LEAD_STATUS_LABELS, LEAD_STATUS_COLORS } from '@/lib/constants'
 import type { LeadStatus } from '@/types/database'
@@ -21,8 +21,16 @@ export default function AdminLeadPoolPage() {
   const [bulkSdrId, setBulkSdrId] = useState('')
   const [bulkAssigning, setBulkAssigning] = useState(false)
 
+  // Drag-select through checkbox column
+  const isDraggingSelect = useRef(false)
+  const dragSelectMode = useRef<'add' | 'remove'>('add') // whether this drag is adding or removing
+
   useEffect(() => {
     loadAll()
+    // Stop drag on global mouseup
+    function onMouseUp() { isDraggingSelect.current = false }
+    document.addEventListener('mouseup', onMouseUp)
+    return () => document.removeEventListener('mouseup', onMouseUp)
   }, [])
 
   async function loadAll() {
@@ -81,6 +89,28 @@ export default function AdminLeadPoolPage() {
       const next = new Set(prev)
       if (next.has(leadId)) next.delete(leadId)
       else next.add(leadId)
+      return next
+    })
+  }
+
+  // Drag-select handlers for the checkbox column
+  function handleCheckboxMouseDown(leadId: string, e: React.MouseEvent) {
+    e.preventDefault() // prevent text selection
+    isDraggingSelect.current = true
+    // If currently selected → this drag will remove; otherwise add
+    dragSelectMode.current = selected.has(leadId) ? 'remove' : 'add'
+    setSelected(prev => {
+      const next = new Set(prev)
+      dragSelectMode.current === 'remove' ? next.delete(leadId) : next.add(leadId)
+      return next
+    })
+  }
+
+  function handleCheckboxMouseEnter(leadId: string) {
+    if (!isDraggingSelect.current) return
+    setSelected(prev => {
+      const next = new Set(prev)
+      dragSelectMode.current === 'remove' ? next.delete(leadId) : next.add(leadId)
       return next
     })
   }
@@ -221,12 +251,16 @@ export default function AdminLeadPoolPage() {
                 const isSelected = selected.has(l.id)
                 return (
                   <tr key={l.id} className={`hover:bg-[#F8FAFC] group transition-colors ${isSelected ? 'bg-blue-50/50' : ''}`}>
-                    <td className="px-4 py-3">
+                    <td
+                      className="px-4 py-3 cursor-pointer select-none"
+                      onMouseDown={e => handleCheckboxMouseDown(l.id, e)}
+                      onMouseEnter={() => handleCheckboxMouseEnter(l.id)}
+                    >
                       <input
                         type="checkbox"
                         checked={isSelected}
                         onChange={() => toggleSelect(l.id)}
-                        className="rounded border-[#CBD5E1] text-[#1A56DB] focus:ring-[#1A56DB]/30 cursor-pointer"
+                        className="rounded border-[#CBD5E1] text-[#1A56DB] focus:ring-[#1A56DB]/30 cursor-pointer pointer-events-none"
                       />
                     </td>
                     <td className="px-4 py-3 font-medium text-[#0F172A]">{l.organization?.name ?? '—'}</td>

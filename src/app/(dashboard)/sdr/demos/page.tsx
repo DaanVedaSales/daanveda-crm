@@ -4,15 +4,18 @@ import { useState, useEffect } from 'react'
 import TopBar from '@/components/layout/TopBar'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
-import { Bell, BellOff, Clock, CalendarCheck, AlertCircle } from 'lucide-react'
+import { Bell, BellOff, Clock, CalendarCheck, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react'
 
 interface BookedDemo {
   id: string
   demo_date: string
   status: string
-  sdr_summary: string
+  sdr_summary: string | null
+  pain_point: string | null
+  demo_expectation: string | null
   reminder_sent: boolean | null
   created_at: string
+  lead_id: string | null
   organization: { name: string; location: string | null; url: string | null }
   closer: { name: string } | null
 }
@@ -49,7 +52,7 @@ export default function SDRDemosPage() {
     const { data } = await supabase
       .from('demos')
       .select(`
-        id, demo_date, status, sdr_summary, reminder_sent, created_at,
+        id, demo_date, status, sdr_summary, pain_point, demo_expectation, reminder_sent, created_at, lead_id,
         organization:organizations(name, location, url),
         closer:users!demos_closer_id_fkey(name)
       `)
@@ -178,11 +181,84 @@ function DemoSection({
   )
 }
 
+// ── Expanded detail for a demo card ──────────────────────────────────────────
+function DemoExpandedDetail({ demo }: { demo: BookedDemo }) {
+  const [leadDetail, setLeadDetail] = useState<{ contacts: any[]; activities: any[] } | null>(null)
+
+  useEffect(() => {
+    if (!demo.lead_id) return
+    fetch(`/api/leads/${demo.lead_id}`)
+      .then(r => r.json())
+      .then(d => setLeadDetail({ contacts: d.contacts ?? [], activities: d.activities ?? [] }))
+  }, [demo.lead_id])
+
+  const primary = leadDetail?.contacts.find((c: any) => c.is_primary) ?? leadDetail?.contacts[0]
+
+  return (
+    <div className="mt-4 space-y-3 border-t border-[#F1F5F9] pt-4">
+      {/* Pain point + demo expectation */}
+      {(demo.pain_point || demo.demo_expectation) && (
+        <div className="space-y-2 bg-[#F8FAFC] rounded-xl p-3 border border-[#F1F5F9]">
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8]">Context for Closer</p>
+          {demo.pain_point && (
+            <div>
+              <p className="text-[10px] font-medium text-[#64748B] mb-0.5">Pain Point</p>
+              <p className="text-xs text-[#0F172A] leading-relaxed">{demo.pain_point}</p>
+            </div>
+          )}
+          {demo.demo_expectation && (
+            <div>
+              <p className="text-[10px] font-medium text-[#64748B] mb-0.5">Demo Expectation</p>
+              <p className="text-xs text-[#0F172A] leading-relaxed">{demo.demo_expectation}</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* KDM Contact */}
+      {!leadDetail && demo.lead_id && (
+        <div className="h-12 bg-[#F1F5F9] rounded-lg skeleton" />
+      )}
+      {primary && (
+        <div className="bg-[#F8FAFC] rounded-xl p-3 border border-[#E2E8F0]">
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8] mb-1.5">Key Decision Maker</p>
+          <p className="text-sm font-medium text-[#0F172A]">{primary.name}</p>
+          {primary.designation && <p className="text-xs text-[#64748B]">{primary.designation}</p>}
+          <div className="flex gap-3 mt-1 text-xs text-[#64748B]">
+            {primary.phone && <span>{primary.phone}</span>}
+            {primary.email && <span>{primary.email}</span>}
+          </div>
+        </div>
+      )}
+
+      {/* Activity log */}
+      {leadDetail && leadDetail.activities.length > 0 && (
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8] mb-2">Recent Activity</p>
+          <div className="space-y-2 max-h-36 overflow-y-auto">
+            {leadDetail.activities.slice(0, 5).map((a: any) => (
+              <div key={a.id} className="flex gap-2">
+                <div className="w-1.5 h-1.5 rounded-full bg-[#1A56DB] mt-1.5 shrink-0" />
+                <div>
+                  <p className="text-xs font-medium text-[#0F172A] capitalize">{a.activity_type.replace('_', ' ')}{a.channel ? ` · ${a.channel}` : ''}</p>
+                  <p className="text-xs text-[#64748B]">{a.notes}</p>
+                  <p className="text-[10px] text-[#94A3B8]">{new Date(a.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function DemoCard({ demo, onRemind, reminding }: {
   demo: BookedDemo
   onRemind: (id: string) => void
   reminding: string | null
 }) {
+  const [expanded, setExpanded] = useState(false)
   const days = daysUntil(demo.demo_date)
   const isUrgent = days <= 1
   const isOverdue = days < 0
@@ -230,7 +306,7 @@ function DemoCard({ demo, onRemind, reminding }: {
           </p>
         </div>
 
-        {/* Right: reminder button */}
+        {/* Right: reminder button + expand toggle */}
         <div className="shrink-0 flex flex-col items-end gap-2">
           {demo.reminder_sent ? (
             <div className="flex items-center gap-1 text-[#059669] text-xs font-medium">
@@ -253,17 +329,29 @@ function DemoCard({ demo, onRemind, reminding }: {
               {reminding === demo.id ? 'Saving...' : 'Mark Reminded'}
             </button>
           )}
+          <button
+            onClick={() => setExpanded(prev => !prev)}
+            className="flex items-center gap-1 text-[10px] text-[#94A3B8] hover:text-[#64748B] transition-colors"
+          >
+            {expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+            {expanded ? 'Less' : 'Details'}
+          </button>
           <p className="text-[10px] text-[#94A3B8]">
             Booked {new Date(demo.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
           </p>
         </div>
       </div>
 
-      {/* SDR Summary snippet */}
-      <div className="mt-4 p-3.5 bg-[#F8FAFC] rounded-xl border border-[#F1F5F9]">
-        <p className="text-label text-[#94A3B8] mb-1.5">Your Summary for Closer</p>
-        <p className="text-[12px] text-[#64748B] leading-relaxed line-clamp-2">{demo.sdr_summary}</p>
-      </div>
+      {/* SDR Summary snippet (collapsed view) */}
+      {!expanded && demo.sdr_summary && (
+        <div className="mt-4 p-3.5 bg-[#F8FAFC] rounded-xl border border-[#F1F5F9]">
+          <p className="text-label text-[#94A3B8] mb-1.5">Your Summary for Closer</p>
+          <p className="text-[12px] text-[#64748B] leading-relaxed line-clamp-2">{demo.sdr_summary}</p>
+        </div>
+      )}
+
+      {/* Expanded detail: pain point, demo expectation, KDM contact, activity log */}
+      {expanded && <DemoExpandedDetail demo={demo} />}
     </div>
   )
 }
