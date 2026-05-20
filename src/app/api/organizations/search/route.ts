@@ -13,6 +13,7 @@ export type OrgSearchStatus =
   | 'in_pipeline'
   | 'demo_booked'
   | 'with_sdr'
+  | 'claim_pending'
   | 'in_lead_pool'
   | 'in_database'
 
@@ -57,14 +58,8 @@ export async function GET(req: NextRequest) {
   const supabase = createServiceClient()
 
   // ── 1. Fetch candidate orgs via pg_trgm similarity + ILIKE fallback ──────
-  // We use a raw RPC call via execute_sql equivalent — but since we don't have
-  // that, we'll use Supabase's textSearch + ilike combo, then rank in JS.
-  // pg_trgm similarity is done via the GIN index on the DB side through ilike.
-  // For true similarity scoring we fetch candidates then score in JS.
-
   const searchLower = q.toLowerCase()
 
-  // Primary: ilike substring match + similar names via broad ilike
   const { data: orgs, error } = await supabase
     .from('organizations')
     .select(`
@@ -87,11 +82,9 @@ export async function GET(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // If we have fewer than limit results, also try trigram-style partial search
   let allOrgs = orgs ?? []
 
   if (allOrgs.length < limit) {
-    // Break query into tokens and search each
     const tokens = q.split(/\s+/).filter(t => t.length >= 3)
     if (tokens.length > 0) {
       const tokenResults = await Promise.all(
@@ -131,15 +124,35 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // ── 2. Score and derive status for each org ───────────────────────────────
+  // ── 2. Fetch pending lead_pool claims for these orgs ─────────────────────
+  // Builds a map: org_id → claiming SDR's name
+  // Used to show "Claimed · Pending" status instead of in_lead_pool / in_database
+  const orgIds = allOrgs.map((o: any) => o.id).filter(Boolean)
+  const claimMap: Record<string, string> = {}
+
+  if (orgIds.length > 0) {
+    const { data: pendingClaims } = await supabase
+      .from('lead_assignment_requests')
+      .select('org_id, sdr:users!lead_assignment_requests_sdr_id_fkey(name)')
+      .in('org_id', orgIds)
+      .eq('status', 'pending')
+      .eq('request_type', 'lead_pool')
+
+    ;(pendingClaims ?? []).forEach((c: any) => {
+      if (c.org_id && c.sdr?.name && !claimMap[c.org_id]) {
+        // Keep first claimer if multiple (shouldn't happen due to duplicate check)
+        claimMap[c.org_id] = c.sdr.name
+      }
+    })
+  }
+
+  // ── 3. Score and derive status for each org ───────────────────────────────
   const scored: OrgSearchResult[] = allOrgs.map((org: any) => {
-    // Similarity score (JS trigram approximation)
     const nameLower = org.name.toLowerCase()
     const sim = jsSimilarity(searchLower, nameLower)
     const isExact = nameLower === searchLower || nameLower.startsWith(searchLower)
 
-    // Derive status from leads/deals/demos
-    const status = deriveStatus(org)
+    const status = deriveStatus(org, claimMap[org.id] ?? null)
 
     return {
       id: org.id,
@@ -153,7 +166,7 @@ export async function GET(req: NextRequest) {
     }
   })
 
-  // ── 3. Sort: exact matches first, then by similarity score ────────────────
+  // ── 4. Sort: exact matches first, then by similarity score ────────────────
   scored.sort((a, b) => {
     if (a.is_exact_match !== b.is_exact_match) return a.is_exact_match ? -1 : 1
     return b.similarity - a.similarity
@@ -163,7 +176,8 @@ export async function GET(req: NextRequest) {
 }
 
 // ── Status derivation (priority order) ───────────────────────────────────────
-function deriveStatus(org: any): {
+// claimingSDRName: if a pending lead_pool claim exists for this org, the SDR's name
+function deriveStatus(org: any, claimingSDRName: string | null): {
   status: OrgSearchStatus
   status_label: string
   assignee_name: string | null
@@ -172,14 +186,12 @@ function deriveStatus(org: any): {
 } {
   const leads: any[] = org.leads ?? []
 
-  // is_client flag (from uploaded dataset)
   if (org.is_client) {
     return { status: 'active_client', status_label: 'Active client', assignee_name: null, assignee_role: null, deal_stage: null }
   }
 
-  // Collect all deals and demos across all leads
-  const allDeals  = leads.flatMap((l: any) => l.deals ?? [])
-  const allDemos  = leads.flatMap((l: any) => l.demos ?? [])
+  const allDeals = leads.flatMap((l: any) => l.deals ?? [])
+  const allDemos = leads.flatMap((l: any) => l.demos ?? [])
 
   // Won deal → active client
   const wonDeal = allDeals.find((d: any) => d.stage === 'won')
@@ -230,6 +242,18 @@ function deriveStatus(org: any): {
       status: 'with_sdr',
       status_label: 'With SDR',
       assignee_name: assignedLead.assigned_user?.name ?? null,
+      assignee_role: 'sdr',
+      deal_stage: null,
+    }
+  }
+
+  // ── Pending claim check (before in_lead_pool / in_database) ──────────────
+  // If an SDR has claimed this org and it's awaiting admin approval, surface that.
+  if (claimingSDRName) {
+    return {
+      status: 'claim_pending',
+      status_label: `Claimed · Pending`,
+      assignee_name: claimingSDRName,
       assignee_role: 'sdr',
       deal_stage: null,
     }
