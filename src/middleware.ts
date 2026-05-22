@@ -10,8 +10,10 @@ export async function middleware(request: NextRequest) {
   if (
     pathname.startsWith('/_next') ||
     pathname.startsWith('/api/') ||
+    pathname.startsWith('/auth/') ||   // /auth/callback for invite + password reset links
     pathname === '/login' ||
-    pathname === '/signup' ||
+    pathname === '/signup' ||          // kept: shows invite-only message without requiring auth
+    pathname === '/set-password' ||    // accessible during recovery flow before workspace redirect
     pathname === '/favicon.ico'
   ) {
     return NextResponse.next()

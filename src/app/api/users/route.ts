@@ -66,7 +66,10 @@ export async function POST(req: NextRequest) {
 
   const supabase = createServiceClient()
 
-  const { data: authData, error: authError } = await supabase.auth.admin.inviteUserByEmail(email)
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://daanveda-crm-seven.vercel.app'
+  const { data: authData, error: authError } = await supabase.auth.admin.inviteUserByEmail(email, {
+    redirectTo: `${appUrl}/auth/callback?type=invite`,
+  })
   if (authError) return NextResponse.json({ error: authError.message }, { status: 500 })
 
   const { data, error: dbError } = await supabase
