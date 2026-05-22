@@ -8,20 +8,9 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
--- ── Helper functions (used by RLS policies) ───────────────────────────────────
-CREATE OR REPLACE FUNCTION get_user_role()
-RETURNS user_role
-LANGUAGE sql STABLE SECURITY DEFINER
-AS $$
-  SELECT role FROM public.users WHERE auth_id = auth.uid() LIMIT 1;
-$$;
-
-CREATE OR REPLACE FUNCTION get_user_id()
-RETURNS uuid
-LANGUAGE sql STABLE SECURITY DEFINER
-AS $$
-  SELECT id FROM public.users WHERE auth_id = auth.uid() LIMIT 1;
-$$;
+-- NOTE: Helper functions get_user_role()/get_user_id() are defined further down,
+-- AFTER the enums and the users table they depend on, so this file runs cleanly
+-- top-to-bottom on a fresh database. (See "HELPER FUNCTIONS" section below.)
 
 -- =============================================================================
 -- ENUMS
@@ -296,6 +285,25 @@ CREATE TABLE lead_assignment_requests (
   reviewed_at       timestamptz,
   requested_at      timestamptz DEFAULT now()
 );
+
+-- =============================================================================
+-- HELPER FUNCTIONS (used by RLS policies; defined here so the enums + users
+-- table they reference already exist when these run)
+-- =============================================================================
+
+CREATE OR REPLACE FUNCTION get_user_role()
+RETURNS user_role
+LANGUAGE sql STABLE SECURITY DEFINER
+AS $$
+  SELECT role FROM public.users WHERE auth_id = auth.uid() LIMIT 1;
+$$;
+
+CREATE OR REPLACE FUNCTION get_user_id()
+RETURNS uuid
+LANGUAGE sql STABLE SECURITY DEFINER
+AS $$
+  SELECT id FROM public.users WHERE auth_id = auth.uid() LIMIT 1;
+$$;
 
 -- =============================================================================
 -- ROW LEVEL SECURITY — Enable on all tables
