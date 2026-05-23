@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
   // Use service client to bypass RLS for the initial profile creation
   const supabase = createServiceClient()
 
-  // Check if profile already exists (prevent duplicate onboarding)
+  // Check if profile already exists by auth_id
   const { data: existing } = await supabase
     .from('users')
     .select('id, role')
@@ -24,6 +24,22 @@ export async function POST(req: NextRequest) {
 
   if (existing) {
     return NextResponse.json({ role: existing.role, already_setup: true })
+  }
+
+  // Check if a profile exists by email (e.g. admin pre-created the user)
+  // If so, link the new auth_id to that existing profile
+  const { data: existingByEmail } = await supabase
+    .from('users')
+    .select('id, role')
+    .eq('email', user.email!)
+    .single()
+
+  if (existingByEmail) {
+    await supabase
+      .from('users')
+      .update({ auth_id: user.id })
+      .eq('id', existingByEmail.id)
+    return NextResponse.json({ role: existingByEmail.role, already_setup: true })
   }
 
   const body = await req.json()

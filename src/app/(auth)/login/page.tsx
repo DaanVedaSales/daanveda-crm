@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 
 type Mode = 'login' | 'forgot'
@@ -204,11 +205,14 @@ export default function LoginPage() {
         </button>
       </form>
 
-      <p className="mt-4 text-xs text-center text-[#94A3B8]">
-        Access is by invitation only. Contact your admin if you need an account.
+      <p className="mt-4 text-sm text-center text-[#64748B]">
+        New to DaanVeda CRM?{' '}
+        <Link href="/signup" className="text-[#1A56DB] font-medium hover:underline">
+          Create account
+        </Link>
       </p>
 
-      <p className="mt-2 text-xs text-center text-[#94A3B8]">
+      <p className="mt-3 text-xs text-center text-[#94A3B8]">
         DaanVeda CRM · Internal tool · v1.0
       </p>
     </div>
