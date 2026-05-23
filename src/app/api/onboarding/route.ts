@@ -35,10 +35,13 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (existingByEmail) {
-    await supabase
+    const { error: linkError } = await supabase
       .from('users')
       .update({ auth_id: user.id })
       .eq('id', existingByEmail.id)
+    if (linkError) {
+      return NextResponse.json({ error: linkError.message }, { status: 500 })
+    }
     return NextResponse.json({ role: existingByEmail.role, already_setup: true })
   }
 
