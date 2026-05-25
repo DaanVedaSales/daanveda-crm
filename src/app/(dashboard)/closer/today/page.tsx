@@ -5,7 +5,7 @@ import TopBar from '@/components/layout/TopBar'
 import { createClient } from '@/lib/supabase/client'
 import DateTimePicker from '@/components/ui/DateTimePicker'
 import { cn } from '@/lib/utils'
-import { CheckCircle, XCircle, RefreshCw, ChevronDown, Bell, BellOff, Calendar, ExternalLink, Building2, Users, Banknote, Tag, AlertCircle, Target } from 'lucide-react'
+import { CheckCircle, XCircle, RefreshCw, ChevronDown, ChevronUp, Bell, BellOff, Calendar, ExternalLink, Building2, Users, Banknote, Tag, AlertCircle, Target, Trash2 } from 'lucide-react'
 
 interface DemoWithDetails {
   id: string
@@ -69,10 +69,12 @@ export default function ActionsPage() {
   const [allDemos, setAllDemos] = useState<DemoWithDetails[]>([])
   const [filter, setFilter] = useState<Filter>('week')
   const [loading, setLoading] = useState(true)
-  const [actionState, setActionState] = useState<Record<string, 'attended' | 'no_show' | 'reschedule' | null>>({})
+  const [actionState, setActionState] = useState<Record<string, 'attended' | 'no_show' | 'reschedule' | 'delete' | null>>({})
   const [rescheduleDate, setRescheduleDate] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
+  const [contactsMap, setContactsMap] = useState<Record<string, any[]>>({})
+  const [contactsExpanded, setContactsExpanded] = useState<Record<string, boolean>>({})
 
   const [newSdrId, setNewSdrId] = useState<Record<string, string>>({})
   const [newCloserId, setNewCloserId] = useState<Record<string, string>>({})
@@ -101,11 +103,28 @@ export default function ActionsPage() {
         lead:leads(id, org_id)
       `)
       .eq('closer_id', profile.id)
+      .eq('is_deleted', false)
       .in('status', ['scheduled', 'rescheduled'])
       .gte('demo_date', new Date().toISOString().split('T')[0] + 'T00:00:00')
       .order('demo_date', { ascending: true })
 
-    setAllDemos((data ?? []) as unknown as DemoWithDetails[])
+    const fetchedDemos = (data ?? []) as unknown as DemoWithDetails[]
+    setAllDemos(fetchedDemos)
+
+    // Fetch contacts for each demo's org
+    const newContactsMap: Record<string, any[]> = {}
+    await Promise.all(
+      fetchedDemos.map(async (demo) => {
+        if (!demo.lead?.org_id) return
+        const { data: contacts } = await supabase
+          .from('contacts')
+          .select('*')
+          .eq('org_id', demo.lead.org_id)
+          .order('is_primary', { ascending: false })
+        newContactsMap[demo.id] = contacts ?? []
+      })
+    )
+    setContactsMap(newContactsMap)
     setLoading(false)
   }
 
@@ -139,6 +158,13 @@ export default function ActionsPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status: action }),
     })
+    setAllDemos(prev => prev.filter(d => d.id !== demo.id))
+    setSaving(null)
+  }
+
+  async function handleDeleteDemo(demo: DemoWithDetails) {
+    setSaving(demo.id)
+    await fetch(`/api/demos/${demo.id}`, { method: 'DELETE' })
     setAllDemos(prev => prev.filter(d => d.id !== demo.id))
     setSaving(null)
   }
@@ -346,6 +372,45 @@ export default function ActionsPage() {
                               )}
                             </div>
 
+                            {/* Key Decision Makers */}
+                            {contactsMap[demo.id] && contactsMap[demo.id].length > 0 && (
+                              <div className="rounded-xl border border-[#E2E8F0] overflow-hidden">
+                                <button
+                                  onClick={() => setContactsExpanded(p => ({ ...p, [demo.id]: !p[demo.id] }))}
+                                  className="w-full flex items-center justify-between px-3.5 py-2.5 bg-[#F8FAFC] hover:bg-[#F1F5F9] transition-colors text-left"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <p className="text-[12px] font-medium text-[#64748B]">
+                                      Key Decision Makers · {contactsMap[demo.id].length}
+                                    </p>
+                                  </div>
+                                  {contactsExpanded[demo.id]
+                                    ? <ChevronUp className="w-3.5 h-3.5 text-[#94A3B8]" strokeWidth={1.75} />
+                                    : <ChevronDown className="w-3.5 h-3.5 text-[#94A3B8]" strokeWidth={1.75} />
+                                  }
+                                </button>
+                                {contactsExpanded[demo.id] && (
+                                  <div className="p-3 space-y-2 bg-white">
+                                    {contactsMap[demo.id].map((c: any) => (
+                                      <div key={c.id} className="bg-[#F8FAFC] rounded-lg p-2.5 border border-[#F1F5F9]">
+                                        <div className="flex items-center gap-2 mb-0.5">
+                                          <p className="text-[13px] font-medium text-[#0F172A]">{c.name}</p>
+                                          {c.is_primary && (
+                                            <span className="text-[9px] font-semibold bg-[#1A56DB] text-white px-1.5 py-0.5 rounded-full">Primary</span>
+                                          )}
+                                        </div>
+                                        {c.designation && <p className="text-[11px] text-[#64748B]">{c.designation}</p>}
+                                        <div className="flex gap-3 mt-1 text-[11px] text-[#94A3B8]">
+                                          {c.phone && <span>{c.phone}</span>}
+                                          {c.email && <span>{c.email}</span>}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
                             {/* SDR Intel */}
                             {(demo.pain_point || demo.demo_expectation || demo.sdr_summary) && (
                               <div className="p-3.5 bg-[#FFFBEB] rounded-xl border border-[#FDE68A] space-y-2.5">
@@ -415,6 +480,12 @@ export default function ActionsPage() {
                             className="btn-ghost flex items-center gap-1.5"
                           >
                             <RefreshCw className="w-3.5 h-3.5" strokeWidth={2} /> Reschedule
+                          </button>
+                          <button
+                            onClick={() => setActionState(p => ({ ...p, [demo.id]: 'delete' }))}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[#EF4444] border border-[#FECACA] rounded-lg hover:bg-red-50 transition-colors"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" strokeWidth={2} /> Delete
                           </button>
                         </div>
 
@@ -518,6 +589,26 @@ export default function ActionsPage() {
                             <button
                               onClick={() => setActionState(p => ({ ...p, [demo.id]: null }))}
                               className="btn-ghost"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+
+                      ) : action === 'delete' ? (
+                        <div className="px-5 py-4 bg-red-50 border-t border-red-100 flex items-center justify-between">
+                          <p className="text-[13px] text-[#EF4444] font-medium">Remove this demo from your pipeline?</p>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleDeleteDemo(demo)}
+                              disabled={isSaving}
+                              className="px-4 py-1.5 bg-[#EF4444] text-white text-xs font-semibold rounded-lg disabled:opacity-60 hover:bg-[#DC2626]"
+                            >
+                              {isSaving ? 'Deleting...' : 'Confirm'}
+                            </button>
+                            <button
+                              onClick={() => setActionState(p => ({ ...p, [demo.id]: null }))}
+                              className="px-3 py-1.5 text-xs text-[#64748B] hover:text-[#0F172A]"
                             >
                               Cancel
                             </button>

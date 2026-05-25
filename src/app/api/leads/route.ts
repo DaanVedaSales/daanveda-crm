@@ -30,6 +30,7 @@ export async function GET(req: NextRequest) {
     `)
     .order('updated_at', { ascending: false })
 
+  query = query.eq('is_deleted', false)
   if (phase) query = query.eq('phase', phase)
   if (assignedTo) query = query.eq('assigned_to', assignedTo)
   if (status) query = query.eq('status', status)

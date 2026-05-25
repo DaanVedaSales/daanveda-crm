@@ -335,13 +335,22 @@ interface DealComment {
 }
 
 // ── Deal Detail Panel ──────────────────────────────────────────────────────────
-function DealPanel({ deal, onClose, onUpdate }: { deal: DealWithDetails; onClose: () => void; onUpdate: () => void }) {
+function DealPanel({ deal, contacts, onClose, onUpdate, onDelete }: {
+  deal: DealWithDetails
+  contacts: any[]
+  onClose: () => void
+  onUpdate: () => void
+  onDelete: (dealId: string) => void
+}) {
   const [dealValue,   setDealValue]   = useState(deal.deal_value?.toString() ?? '')
   const [followUpDate, setFollowUpDate] = useState(deal.next_follow_up ?? '')
   const [lossReason,  setLossReason]  = useState(deal.loss_reason ?? '')
   const [billingName, setBillingName] = useState(deal.billing_name ?? '')
   const [saving,      setSaving]      = useState(false)
   const [removing,    setRemoving]    = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting,    setDeleting]    = useState(false)
+  const [kdmExpanded, setKdmExpanded] = useState(false)
 
   // POC state
   const [pocName,        setPocName]        = useState(deal.poc_name ?? '')
@@ -416,6 +425,17 @@ function DealPanel({ deal, onClose, onUpdate }: { deal: DealWithDetails; onClose
     setRemoving(false); onUpdate(); onClose()
   }
 
+  async function handleDelete() {
+    setDeleting(true)
+    // If demo_id exists, DELETE /api/demos/:id (cascades lead return to SDR)
+    // Otherwise just soft-delete deal directly (shouldn't happen but be safe)
+    if (deal.demo?.id) {
+      await fetch(`/api/demos/${deal.demo.id}`, { method: 'DELETE' })
+    }
+    setDeleting(false)
+    onDelete(deal.id)
+  }
+
   const stageColor = DEAL_STAGE_COLORS[deal.stage]
   const demoDateStr = deal.demo?.demo_date
     ? new Date(deal.demo.demo_date).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true })
@@ -446,12 +466,40 @@ function DealPanel({ deal, onClose, onUpdate }: { deal: DealWithDetails; onClose
               )}
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 rounded-lg hover:bg-[#F1F5F9] text-[#94A3B8] hover:text-[#374151] transition-colors"
-          >
-            <X className="w-4 h-4" strokeWidth={1.75} />
-          </button>
+          <div className="flex items-center gap-1">
+            {confirmDelete ? (
+              <div className="flex items-center gap-1.5 mr-1">
+                <span className="text-[11px] text-[#EF4444] font-medium whitespace-nowrap">Remove from pipeline?</span>
+                <button
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  className="px-2 py-0.5 bg-[#EF4444] text-white text-[10px] font-semibold rounded-lg disabled:opacity-60 hover:bg-[#DC2626]"
+                >
+                  {deleting ? '...' : 'Yes'}
+                </button>
+                <button
+                  onClick={() => setConfirmDelete(false)}
+                  className="px-2 py-0.5 border border-[#E2E8F0] text-[#64748B] text-[10px] rounded-lg hover:bg-[#F8FAFC]"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setConfirmDelete(true)}
+                className="p-2 rounded-lg hover:bg-red-50 text-[#94A3B8] hover:text-[#EF4444] transition-colors"
+                title="Delete deal"
+              >
+                <Trash2 className="w-4 h-4" strokeWidth={1.75} />
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="p-2 rounded-lg hover:bg-[#F1F5F9] text-[#94A3B8] hover:text-[#374151] transition-colors"
+            >
+              <X className="w-4 h-4" strokeWidth={1.75} />
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto scrollbar-thin p-5 space-y-4">
@@ -513,6 +561,43 @@ function DealPanel({ deal, onClose, onUpdate }: { deal: DealWithDetails; onClose
               </div>
             )}
           </div>
+
+          {/* ── Key Decision Makers ──────────────────────────────────────── */}
+          {contacts.length > 0 && (
+            <div className="rounded-xl border border-[#E2E8F0] overflow-hidden">
+              <button
+                onClick={() => setKdmExpanded(p => !p)}
+                className="w-full flex items-center justify-between px-4 py-3 bg-[#F8FAFC] hover:bg-[#F1F5F9] transition-colors text-left"
+              >
+                <p className="text-label text-[#94A3B8]">
+                  Key Decision Makers · {contacts.length}
+                </p>
+                {kdmExpanded
+                  ? <ChevronDown className="w-3.5 h-3.5 text-[#94A3B8] rotate-180 transition-transform" strokeWidth={1.75} />
+                  : <ChevronDown className="w-3.5 h-3.5 text-[#94A3B8] transition-transform" strokeWidth={1.75} />
+                }
+              </button>
+              {kdmExpanded && (
+                <div className="p-3 space-y-2 bg-white">
+                  {contacts.map((c: any) => (
+                    <div key={c.id} className="bg-[#F8FAFC] rounded-lg p-3 border border-[#F1F5F9]">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <p className="text-[13px] font-medium text-[#0F172A]">{c.name}</p>
+                        {c.is_primary && (
+                          <span className="text-[9px] font-semibold bg-[#1A56DB] text-white px-1.5 py-0.5 rounded-full">Primary</span>
+                        )}
+                      </div>
+                      {c.designation && <p className="text-[11px] text-[#64748B]">{c.designation}</p>}
+                      <div className="flex gap-3 mt-1 text-[11px] text-[#94A3B8]">
+                        {c.phone && <span>{c.phone}</span>}
+                        {c.email && <span>{c.email}</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* ── Deal Timeline ─────────────────────────────────────────────── */}
           {(() => {
@@ -1023,6 +1108,7 @@ export default function PipelinePage() {
   const [loading,      setLoading]     = useState(true)
   const [draggingId,   setDraggingId]  = useState<string | null>(null)
   const [selectedDeal, setSelectedDeal] = useState<DealWithDetails | null>(null)
+  const [dealContacts, setDealContacts] = useState<any[]>([])
   const [showAddDeal,   setShowAddDeal]   = useState(false)
   const [showOrgSearch, setShowOrgSearch] = useState(false)
   // Terminal stages collapsed by default
@@ -1030,6 +1116,18 @@ export default function PipelinePage() {
   const supabase = createClient()
 
   useEffect(() => { fetchPipeline() }, [])
+
+  useEffect(() => {
+    if (!selectedDeal) { setDealContacts([]); return }
+    const orgId = selectedDeal.organization?.id
+    if (!orgId) return
+    supabase
+      .from('contacts')
+      .select('*')
+      .eq('org_id', orgId)
+      .order('is_primary', { ascending: false })
+      .then(({ data }) => setDealContacts(data ?? []))
+  }, [selectedDeal?.id])
 
   async function fetchPipeline() {
     const { data: user } = await supabase.auth.getUser()
@@ -1129,7 +1227,16 @@ export default function PipelinePage() {
       )}
 
       {selectedDeal && (
-        <DealPanel deal={selectedDeal} onClose={() => setSelectedDeal(null)} onUpdate={fetchPipeline} />
+        <DealPanel
+          deal={selectedDeal}
+          contacts={dealContacts}
+          onClose={() => setSelectedDeal(null)}
+          onUpdate={fetchPipeline}
+          onDelete={(dealId) => {
+            setColumns(prev => prev.map(col => ({ ...col, deals: col.deals.filter(d => d.id !== dealId) })))
+            setSelectedDeal(null)
+          }}
+        />
       )}
       {showAddDeal && (
         <AddDealModal onClose={() => setShowAddDeal(false)} onSuccess={() => { setShowAddDeal(false); fetchPipeline() }} />

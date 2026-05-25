@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { LEAD_STATUS_LABELS, LEAD_STATUS_COLORS } from '@/lib/constants'
 import type { LeadStatus } from '@/types/database'
 import { cn } from '@/lib/utils'
-import { CheckCircle, ChevronDown, ChevronUp } from 'lucide-react'
+import { CheckCircle, ChevronDown, ChevronUp, Trash2 } from 'lucide-react'
 
 interface FollowupLead {
   id: string
@@ -112,6 +112,7 @@ export default function FollowupsPage() {
       .from('leads')
       .select('id, status, callback_date, follow_up_date, updated_at, organization:organizations(name, location)')
       .eq('assigned_to', profile.id)
+      .eq('is_deleted', false)
       .in('status', ['call_again', 'not_reachable'])
       .order('callback_date', { ascending: true, nullsFirst: false })
 
@@ -166,9 +167,20 @@ export default function FollowupsPage() {
 
   function LeadRow({ lead }: { lead: FollowupLead }) {
     const [expanded, setExpanded] = useState(false)
+    const [confirmDelete, setConfirmDelete] = useState(false)
+    const [deleting, setDeleting] = useState(false)
     const since = daysSince(lead.updated_at)
     const isOverdue = lead.callback_date ? lead.callback_date < today : false
     const isToday = lead.callback_date === today
+
+    async function handleDelete(e: React.MouseEvent) {
+      e.stopPropagation()
+      setDeleting(true)
+      await fetch(`/api/leads/${lead.id}`, { method: 'DELETE' })
+      setLeads(prev => prev.filter(l => l.id !== lead.id))
+      setDeleting(false)
+    }
+
     return (
       <div className="border-b border-[#F1F5F9] last:border-0">
         <div
@@ -195,6 +207,33 @@ export default function FollowupsPage() {
               <span className="text-[12px] text-[#94A3B8] min-w-[60px] text-right">
                 {since !== null ? `${since}d ago` : '—'}
               </span>
+            )}
+            {/* Delete button / inline confirmation */}
+            {confirmDelete ? (
+              <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+                <span className="text-[10px] text-[#EF4444] font-medium">Delete?</span>
+                <button
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  className="px-2 py-0.5 bg-[#EF4444] text-white rounded text-[10px] font-semibold disabled:opacity-60 hover:bg-[#DC2626]"
+                >
+                  {deleting ? '...' : 'Yes'}
+                </button>
+                <button
+                  onClick={e => { e.stopPropagation(); setConfirmDelete(false) }}
+                  className="px-2 py-0.5 border border-[#E2E8F0] text-[#64748B] rounded text-[10px] hover:bg-[#F8FAFC]"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={e => { e.stopPropagation(); setConfirmDelete(true) }}
+                className="p-1 text-[#94A3B8] hover:text-[#EF4444] transition-colors"
+                title="Delete lead"
+              >
+                <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />
+              </button>
             )}
             {expanded
               ? <ChevronUp className="w-3.5 h-3.5 text-[#94A3B8]" />

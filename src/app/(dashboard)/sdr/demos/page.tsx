@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import TopBar from '@/components/layout/TopBar'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
-import { Bell, BellOff, Clock, CalendarCheck, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react'
+import { Bell, BellOff, Clock, CalendarCheck, AlertCircle, ChevronDown, ChevronUp, Trash2 } from 'lucide-react'
 
 interface BookedDemo {
   id: string
@@ -42,6 +42,10 @@ export default function SDRDemosPage() {
   const [reminding, setReminding] = useState<string | null>(null)
   const supabase = createClient()
 
+  function deleteDemoFromList(leadId: string) {
+    setDemos(prev => prev.filter(d => d.lead_id !== leadId))
+  }
+
   useEffect(() => { fetchDemos() }, [])
 
   async function fetchDemos() {
@@ -57,6 +61,7 @@ export default function SDRDemosPage() {
         closer:users!demos_closer_id_fkey(name)
       `)
       .eq('sdr_id', profile.id)
+      .eq('is_deleted', false)
       .in('status', ['scheduled', 'rescheduled'])
       .order('demo_date', { ascending: true })
 
@@ -137,19 +142,19 @@ export default function SDRDemosPage() {
         )}
 
         {overdueDemos.length > 0 && (
-          <DemoSection title="Overdue" demos={overdueDemos} onRemind={markReminder} reminding={reminding} urgent />
+          <DemoSection title="Overdue" demos={overdueDemos} onRemind={markReminder} reminding={reminding} onDelete={deleteDemoFromList} urgent />
         )}
         {todayDemos.length > 0 && (
-          <DemoSection title="Today" demos={todayDemos} onRemind={markReminder} reminding={reminding} urgent />
+          <DemoSection title="Today" demos={todayDemos} onRemind={markReminder} reminding={reminding} onDelete={deleteDemoFromList} urgent />
         )}
         {tomorrowDemos.length > 0 && (
-          <DemoSection title="Tomorrow" demos={tomorrowDemos} onRemind={markReminder} reminding={reminding} urgent />
+          <DemoSection title="Tomorrow" demos={tomorrowDemos} onRemind={markReminder} reminding={reminding} onDelete={deleteDemoFromList} urgent />
         )}
         {thisWeekDemos.length > 0 && (
-          <DemoSection title="This Week" demos={thisWeekDemos} onRemind={markReminder} reminding={reminding} />
+          <DemoSection title="This Week" demos={thisWeekDemos} onRemind={markReminder} reminding={reminding} onDelete={deleteDemoFromList} />
         )}
         {upcomingDemos.length > 0 && (
-          <DemoSection title="Upcoming" demos={upcomingDemos} onRemind={markReminder} reminding={reminding} />
+          <DemoSection title="Upcoming" demos={upcomingDemos} onRemind={markReminder} reminding={reminding} onDelete={deleteDemoFromList} />
         )}
 
       </div>
@@ -158,12 +163,13 @@ export default function SDRDemosPage() {
 }
 
 function DemoSection({
-  title, demos, onRemind, reminding, urgent = false
+  title, demos, onRemind, reminding, onDelete, urgent = false
 }: {
   title: string
   demos: BookedDemo[]
   onRemind: (id: string) => void
   reminding: string | null
+  onDelete: (leadId: string) => void
   urgent?: boolean
 }) {
   return (
@@ -175,7 +181,7 @@ function DemoSection({
         {title} &middot; {demos.length}
       </h2>
       <div className="space-y-3">
-        {demos.map(demo => <DemoCard key={demo.id} demo={demo} onRemind={onRemind} reminding={reminding} />)}
+        {demos.map(demo => <DemoCard key={demo.id} demo={demo} onRemind={onRemind} reminding={reminding} onDelete={onDelete} />)}
       </div>
     </div>
   )
@@ -191,8 +197,6 @@ function DemoExpandedDetail({ demo }: { demo: BookedDemo }) {
       .then(r => r.json())
       .then(d => setLeadDetail({ contacts: d.contacts ?? [], activities: d.activities ?? [] }))
   }, [demo.lead_id])
-
-  const primary = leadDetail?.contacts.find((c: any) => c.is_primary) ?? leadDetail?.contacts[0]
 
   return (
     <div className="mt-4 space-y-3 border-t border-[#F1F5F9] pt-4">
@@ -215,19 +219,28 @@ function DemoExpandedDetail({ demo }: { demo: BookedDemo }) {
         </div>
       )}
 
-      {/* KDM Contact */}
+      {/* All KDM Contacts */}
       {!leadDetail && demo.lead_id && (
         <div className="h-12 bg-[#F1F5F9] rounded-lg skeleton" />
       )}
-      {primary && (
-        <div className="bg-[#F8FAFC] rounded-xl p-3 border border-[#E2E8F0]">
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8] mb-1.5">Key Decision Maker</p>
-          <p className="text-sm font-medium text-[#0F172A]">{primary.name}</p>
-          {primary.designation && <p className="text-xs text-[#64748B]">{primary.designation}</p>}
-          <div className="flex gap-3 mt-1 text-xs text-[#64748B]">
-            {primary.phone && <span>{primary.phone}</span>}
-            {primary.email && <span>{primary.email}</span>}
-          </div>
+      {leadDetail && leadDetail.contacts.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8]">Key Decision Makers</p>
+          {leadDetail.contacts.map((c: any) => (
+            <div key={c.id} className="bg-[#F8FAFC] rounded-xl p-3 border border-[#E2E8F0]">
+              <div className="flex items-center gap-2 mb-0.5">
+                <p className="text-sm font-medium text-[#0F172A]">{c.name}</p>
+                {c.is_primary && (
+                  <span className="text-[9px] font-semibold bg-[#1A56DB] text-white px-1.5 py-0.5 rounded-full">Primary</span>
+                )}
+              </div>
+              {c.designation && <p className="text-xs text-[#64748B]">{c.designation}</p>}
+              <div className="flex gap-3 mt-1 text-xs text-[#64748B]">
+                {c.phone && <span>{c.phone}</span>}
+                {c.email && <span>{c.email}</span>}
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
@@ -253,13 +266,24 @@ function DemoExpandedDetail({ demo }: { demo: BookedDemo }) {
   )
 }
 
-function DemoCard({ demo, onRemind, reminding }: {
+function DemoCard({ demo, onRemind, reminding, onDelete }: {
   demo: BookedDemo
   onRemind: (id: string) => void
   reminding: string | null
+  onDelete: (leadId: string) => void
 }) {
   const [expanded, setExpanded] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const days = daysUntil(demo.demo_date)
+
+  async function handleDelete() {
+    if (!demo.lead_id) return
+    setDeleting(true)
+    await fetch(`/api/leads/${demo.lead_id}`, { method: 'DELETE' })
+    onDelete(demo.lead_id)
+    setDeleting(false)
+  }
   const isUrgent = days <= 1
   const isOverdue = days < 0
 
@@ -329,6 +353,35 @@ function DemoCard({ demo, onRemind, reminding }: {
               {reminding === demo.id ? 'Saving...' : 'Mark Reminded'}
             </button>
           )}
+
+          {/* Delete button / inline confirmation */}
+          {confirmDelete ? (
+            <div className="flex items-center gap-1.5 text-xs">
+              <span className="text-[#EF4444] font-medium">Delete this demo?</span>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="px-2 py-0.5 bg-[#EF4444] text-white rounded text-[10px] font-semibold disabled:opacity-60 hover:bg-[#DC2626]"
+              >
+                {deleting ? '...' : 'Yes'}
+              </button>
+              <button
+                onClick={() => setConfirmDelete(false)}
+                className="px-2 py-0.5 border border-[#E2E8F0] text-[#64748B] rounded text-[10px] hover:bg-[#F8FAFC]"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setConfirmDelete(true)}
+              className="flex items-center gap-1 text-[10px] text-[#94A3B8] hover:text-[#EF4444] transition-colors"
+              title="Delete demo"
+            >
+              <Trash2 className="w-3 h-3" />
+            </button>
+          )}
+
           <button
             onClick={() => setExpanded(prev => !prev)}
             className="flex items-center gap-1 text-[10px] text-[#94A3B8] hover:text-[#64748B] transition-colors"

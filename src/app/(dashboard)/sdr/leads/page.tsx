@@ -5,7 +5,7 @@ import TopBar from '@/components/layout/TopBar'
 import { createClient } from '@/lib/supabase/client'
 import { LEAD_STATUS_LABELS, LEAD_STATUS_COLORS, INTEREST_SIGNAL_LABELS, INTEREST_SIGNAL_COLORS } from '@/lib/constants'
 import { formatRelativeDate, cn } from '@/lib/utils'
-import { Search, ChevronRight, Plus, Pencil, Send } from 'lucide-react'
+import { Search, ChevronRight, Plus, Pencil, Send, Trash2 } from 'lucide-react'
 import DateTimePicker from '@/components/ui/DateTimePicker'
 import OrgSearchInput from '@/components/crm/OrgSearchInput'
 import OrgSearchModal from '@/components/crm/OrgSearchModal'
@@ -26,7 +26,19 @@ export default function SDRLeadsPage() {
   const [showPanel, setShowPanel] = useState(false)
   const [showAddLead,   setShowAddLead]   = useState(false)
   const [showOrgSearch, setShowOrgSearch] = useState(false)
+  const [deletingLeadId, setDeletingLeadId] = useState<string | null>(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const supabase = createClient()
+
+  async function deleteLead(leadId: string) {
+    setDeletingLeadId(leadId)
+    await fetch(`/api/leads/${leadId}`, { method: 'DELETE' })
+    setLeads(prev => prev.filter(l => l.id !== leadId))
+    setFiltered(prev => prev.filter(l => l.id !== leadId))
+    if (selectedLead?.id === leadId) { setShowPanel(false); setSelectedLead(null) }
+    setDeletingLeadId(null)
+    setConfirmDeleteId(null)
+  }
 
   useEffect(() => { fetchLeads() }, [])
   useEffect(() => {
@@ -141,13 +153,13 @@ export default function SDRLeadsPage() {
         <div className="flex-1 overflow-y-auto bg-[#F8FAFC]">
           <div className="divide-y divide-[#F1F5F9]">
             {filtered.map(lead => (
-              <button
+              <div
                 key={lead.id}
-                onClick={() => openLead(lead)}
                 className={cn(
-                  'w-full text-left px-4 py-3.5 bg-white hover:bg-[#F8FAFC] transition-colors',
+                  'group relative w-full text-left px-4 py-3.5 bg-white hover:bg-[#F8FAFC] transition-colors cursor-pointer',
                   selectedLead?.id === lead.id && 'bg-[#EFF6FF] border-l-2 border-[#1A56DB]'
                 )}
+                onClick={() => openLead(lead)}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
@@ -175,9 +187,38 @@ export default function SDRLeadsPage() {
                       )}
                     </div>
                   </div>
-                  <ChevronRight className="w-4 h-4 text-[#CBD5E1] mt-1 shrink-0" />
+                  <div className="flex items-center gap-1 shrink-0 mt-0.5">
+                    {/* Delete button / inline confirmation */}
+                    {confirmDeleteId === lead.id ? (
+                      <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                        <span className="text-[10px] text-[#EF4444] font-medium">Delete?</span>
+                        <button
+                          onClick={() => deleteLead(lead.id)}
+                          disabled={deletingLeadId === lead.id}
+                          className="px-1.5 py-0.5 bg-[#EF4444] text-white text-[10px] font-semibold rounded disabled:opacity-60 hover:bg-[#DC2626]"
+                        >
+                          {deletingLeadId === lead.id ? '...' : 'Yes'}
+                        </button>
+                        <button
+                          onClick={e => { e.stopPropagation(); setConfirmDeleteId(null) }}
+                          className="px-1.5 py-0.5 border border-[#E2E8F0] text-[#64748B] text-[10px] rounded hover:bg-[#F8FAFC]"
+                        >
+                          No
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={e => { e.stopPropagation(); setConfirmDeleteId(lead.id) }}
+                        className="opacity-0 group-hover:opacity-100 p-1 text-[#94A3B8] hover:text-[#EF4444] transition-all"
+                        title="Delete lead"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />
+                      </button>
+                    )}
+                    <ChevronRight className="w-4 h-4 text-[#CBD5E1]" />
+                  </div>
                 </div>
-              </button>
+              </div>
             ))}
 
             {filtered.length === 0 && (
@@ -239,6 +280,20 @@ function AddLeadModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
   const [kdmDesignation, setKdmDesignation] = useState('')
   const [kdmEmail, setKdmEmail] = useState('')
   const [kdmLinkedin, setKdmLinkedin] = useState('')
+  // KDM2
+  const [showKdm2, setShowKdm2] = useState(false)
+  const [kdm2Name, setKdm2Name] = useState('')
+  const [kdm2Phone, setKdm2Phone] = useState('')
+  const [kdm2Designation, setKdm2Designation] = useState('')
+  const [kdm2Email, setKdm2Email] = useState('')
+  const [kdm2Linkedin, setKdm2Linkedin] = useState('')
+  // KDM3
+  const [showKdm3, setShowKdm3] = useState(false)
+  const [kdm3Name, setKdm3Name] = useState('')
+  const [kdm3Phone, setKdm3Phone] = useState('')
+  const [kdm3Designation, setKdm3Designation] = useState('')
+  const [kdm3Email, setKdm3Email] = useState('')
+  const [kdm3Linkedin, setKdm3Linkedin] = useState('')
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -282,6 +337,20 @@ function AddLeadModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
         kdm_designation: kdmDesignation,
         kdm_email: kdmEmail,
         kdm_linkedin: kdmLinkedin,
+        ...(showKdm2 && kdm2Name.trim() ? {
+          kdm2_name: kdm2Name,
+          kdm2_phone: kdm2Phone,
+          kdm2_designation: kdm2Designation,
+          kdm2_email: kdm2Email,
+          kdm2_linkedin: kdm2Linkedin,
+        } : {}),
+        ...(showKdm3 && kdm3Name.trim() ? {
+          kdm3_name: kdm3Name,
+          kdm3_phone: kdm3Phone,
+          kdm3_designation: kdm3Designation,
+          kdm3_email: kdm3Email,
+          kdm3_linkedin: kdm3Linkedin,
+        } : {}),
         notes,
       }),
     })
@@ -459,6 +528,102 @@ function AddLeadModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
                 className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20"
               />
             </div>
+
+            {/* KDM2 */}
+            {showKdm2 ? (
+              <div className="space-y-3 pt-2 border-t border-[#F1F5F9]">
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8]">2nd Decision Maker</p>
+                  <button
+                    type="button"
+                    onClick={() => { setShowKdm2(false); setKdm2Name(''); setShowKdm3(false); setKdm3Name('') }}
+                    className="text-xs text-[#94A3B8] hover:text-[#EF4444] transition-colors"
+                  >
+                    Remove
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs text-[#64748B] mb-1">Name</label>
+                    <input value={kdm2Name} onChange={e => setKdm2Name(e.target.value)} placeholder="Full name" className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20" />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-[#64748B] mb-1">Designation</label>
+                    <input value={kdm2Designation} onChange={e => setKdm2Designation(e.target.value)} placeholder="CEO, CFO..." className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs text-[#64748B] mb-1">Phone</label>
+                    <input value={kdm2Phone} onChange={e => setKdm2Phone(e.target.value)} placeholder="+91 98765 43210" className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20" />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-[#64748B] mb-1">Email</label>
+                    <input type="email" value={kdm2Email} onChange={e => setKdm2Email(e.target.value)} placeholder="name@org.com" className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs text-[#64748B] mb-1">LinkedIn URL</label>
+                  <input value={kdm2Linkedin} onChange={e => setKdm2Linkedin(e.target.value)} placeholder="https://linkedin.com/in/..." className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20" />
+                </div>
+
+                {/* KDM3 */}
+                {showKdm3 ? (
+                  <div className="space-y-3 pt-2 border-t border-[#F1F5F9]">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8]">3rd Decision Maker</p>
+                      <button
+                        type="button"
+                        onClick={() => { setShowKdm3(false); setKdm3Name('') }}
+                        className="text-xs text-[#94A3B8] hover:text-[#EF4444] transition-colors"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs text-[#64748B] mb-1">Name</label>
+                        <input value={kdm3Name} onChange={e => setKdm3Name(e.target.value)} placeholder="Full name" className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20" />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-[#64748B] mb-1">Designation</label>
+                        <input value={kdm3Designation} onChange={e => setKdm3Designation(e.target.value)} placeholder="CEO, CFO..." className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20" />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs text-[#64748B] mb-1">Phone</label>
+                        <input value={kdm3Phone} onChange={e => setKdm3Phone(e.target.value)} placeholder="+91 98765 43210" className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20" />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-[#64748B] mb-1">Email</label>
+                        <input type="email" value={kdm3Email} onChange={e => setKdm3Email(e.target.value)} placeholder="name@org.com" className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-[#64748B] mb-1">LinkedIn URL</label>
+                      <input value={kdm3Linkedin} onChange={e => setKdm3Linkedin(e.target.value)} placeholder="https://linkedin.com/in/..." className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20" />
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setShowKdm3(true)}
+                    className="w-full py-2 border border-dashed border-[#E2E8F0] text-xs text-[#64748B] rounded-lg hover:border-[#1A56DB] hover:text-[#1A56DB] transition-colors"
+                  >
+                    + Add third KDM
+                  </button>
+                )}
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowKdm2(true)}
+                className="w-full py-2 border border-dashed border-[#E2E8F0] text-xs text-[#64748B] rounded-lg hover:border-[#1A56DB] hover:text-[#1A56DB] transition-colors"
+              >
+                + Add another KDM
+              </button>
+            )}
           </div>
 
           {/* ── Notes ────────────────────────────────────────────────────── */}

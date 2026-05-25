@@ -226,12 +226,14 @@ export type Database = {
           created_at: string | null
           date_won_lost: string | null
           deal_value: number | null
+          deleted_at: string | null
           demo_id: string | null
           first_demo_date: string | null
           follow_up_count: number | null
           gst_number: string | null
           id: string
           invoice_status: Database["public"]["Enums"]["invoice_status"] | null
+          is_deleted: boolean
           lead_id: string
           loss_reason: string | null
           next_follow_up: string | null
@@ -239,6 +241,10 @@ export type Database = {
           org_id: string
           payment_confirmed: boolean | null
           plan_type: string | null
+          poc_designation: string | null
+          poc_email: string | null
+          poc_name: string | null
+          poc_phone: string | null
           proposal_sent_at: string | null
           removed_from_board: boolean | null
           sales_cycle_days: number | null
@@ -252,12 +258,14 @@ export type Database = {
           created_at?: string | null
           date_won_lost?: string | null
           deal_value?: number | null
+          deleted_at?: string | null
           demo_id?: string | null
           first_demo_date?: string | null
           follow_up_count?: number | null
           gst_number?: string | null
           id?: string
           invoice_status?: Database["public"]["Enums"]["invoice_status"] | null
+          is_deleted?: boolean
           lead_id: string
           loss_reason?: string | null
           next_follow_up?: string | null
@@ -265,6 +273,10 @@ export type Database = {
           org_id: string
           payment_confirmed?: boolean | null
           plan_type?: string | null
+          poc_designation?: string | null
+          poc_email?: string | null
+          poc_name?: string | null
+          poc_phone?: string | null
           proposal_sent_at?: string | null
           removed_from_board?: boolean | null
           sales_cycle_days?: number | null
@@ -278,12 +290,14 @@ export type Database = {
           created_at?: string | null
           date_won_lost?: string | null
           deal_value?: number | null
+          deleted_at?: string | null
           demo_id?: string | null
           first_demo_date?: string | null
           follow_up_count?: number | null
           gst_number?: string | null
           id?: string
           invoice_status?: Database["public"]["Enums"]["invoice_status"] | null
+          is_deleted?: boolean
           lead_id?: string
           loss_reason?: string | null
           next_follow_up?: string | null
@@ -291,6 +305,10 @@ export type Database = {
           org_id?: string
           payment_confirmed?: boolean | null
           plan_type?: string | null
+          poc_designation?: string | null
+          poc_email?: string | null
+          poc_name?: string | null
+          poc_phone?: string | null
           proposal_sent_at?: string | null
           removed_from_board?: boolean | null
           sales_cycle_days?: number | null
@@ -309,11 +327,15 @@ export type Database = {
           calendar_invite_sent: boolean | null
           closer_id: string | null
           created_at: string | null
+          deleted_at: string | null
           demo_date: string
+          demo_expectation: string | null
           handoff_at: string | null
           id: string
+          is_deleted: boolean
           lead_id: string
           org_id: string
+          pain_point: string | null
           post_demo_notes: string | null
           reminder_sent: boolean | null
           sdr_id: string
@@ -326,11 +348,15 @@ export type Database = {
           calendar_invite_sent?: boolean | null
           closer_id?: string | null
           created_at?: string | null
+          deleted_at?: string | null
           demo_date: string
+          demo_expectation?: string | null
           handoff_at?: string | null
           id?: string
+          is_deleted?: boolean
           lead_id: string
           org_id: string
+          pain_point?: string | null
           post_demo_notes?: string | null
           reminder_sent?: boolean | null
           sdr_id: string
@@ -343,11 +369,15 @@ export type Database = {
           calendar_invite_sent?: boolean | null
           closer_id?: string | null
           created_at?: string | null
+          deleted_at?: string | null
           demo_date?: string
+          demo_expectation?: string | null
           handoff_at?: string | null
           id?: string
+          is_deleted?: boolean
           lead_id?: string
           org_id?: string
+          pain_point?: string | null
           post_demo_notes?: string | null
           reminder_sent?: boolean | null
           sdr_id?: string
@@ -405,9 +435,11 @@ export type Database = {
           callback_date: string | null
           created_at: string | null
           dataset_id: string | null
+          deleted_at: string | null
           follow_up_date: string | null
           id: string
           interest_signal: Database["public"]["Enums"]["interest_signal"] | null
+          is_deleted: boolean
           lead_type: Database["public"]["Enums"]["lead_type"] | null
           org_id: string
           phase: Database["public"]["Enums"]["lead_phase"]
@@ -422,9 +454,11 @@ export type Database = {
           callback_date?: string | null
           created_at?: string | null
           dataset_id?: string | null
+          deleted_at?: string | null
           follow_up_date?: string | null
           id?: string
           interest_signal?: Database["public"]["Enums"]["interest_signal"] | null
+          is_deleted?: boolean
           lead_type?: Database["public"]["Enums"]["lead_type"] | null
           org_id: string
           phase?: Database["public"]["Enums"]["lead_phase"]
@@ -439,9 +473,11 @@ export type Database = {
           callback_date?: string | null
           created_at?: string | null
           dataset_id?: string | null
+          deleted_at?: string | null
           follow_up_date?: string | null
           id?: string
           interest_signal?: Database["public"]["Enums"]["interest_signal"] | null
+          is_deleted?: boolean
           lead_type?: Database["public"]["Enums"]["lead_type"] | null
           org_id?: string
           phase?: Database["public"]["Enums"]["lead_phase"]

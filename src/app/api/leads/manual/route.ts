@@ -31,6 +31,16 @@ export async function POST(req: NextRequest) {
     kdm_designation,
     kdm_email,
     kdm_linkedin,
+    kdm2_name,
+    kdm2_phone,
+    kdm2_designation,
+    kdm2_email,
+    kdm2_linkedin,
+    kdm3_name,
+    kdm3_phone,
+    kdm3_designation,
+    kdm3_email,
+    kdm3_linkedin,
     notes, // stored in activity log, not in leads table (leads has no notes column)
   } = body
 
@@ -63,7 +73,7 @@ export async function POST(req: NextRequest) {
 
   if (orgErr) return NextResponse.json({ error: orgErr.message }, { status: 500 })
 
-  // 2. Create KDM contact
+  // 2. Create primary KDM contact
   const { error: contactErr } = await supabase
     .from('contacts')
     .insert({
@@ -79,6 +89,38 @@ export async function POST(req: NextRequest) {
   if (contactErr) {
     // Best-effort — don't fail the whole flow for contact creation
     console.error('Contact creation failed:', contactErr.message)
+  }
+
+  // 2b. Create KDM2 if provided
+  if (kdm2_name?.trim()) {
+    const { error: contact2Err } = await supabase
+      .from('contacts')
+      .insert({
+        org_id: org.id,
+        name: kdm2_name.trim(),
+        phone: kdm2_phone?.trim() || null,
+        designation: kdm2_designation?.trim() || null,
+        email: kdm2_email?.trim() || null,
+        linkedin_url: kdm2_linkedin?.trim() || null,
+        is_primary: false,
+      })
+    if (contact2Err) console.error('KDM2 contact creation failed:', contact2Err.message)
+  }
+
+  // 2c. Create KDM3 if provided
+  if (kdm3_name?.trim()) {
+    const { error: contact3Err } = await supabase
+      .from('contacts')
+      .insert({
+        org_id: org.id,
+        name: kdm3_name.trim(),
+        phone: kdm3_phone?.trim() || null,
+        designation: kdm3_designation?.trim() || null,
+        email: kdm3_email?.trim() || null,
+        linkedin_url: kdm3_linkedin?.trim() || null,
+        is_primary: false,
+      })
+    if (contact3Err) console.error('KDM3 contact creation failed:', contact3Err.message)
   }
 
   // 3. Create lead assigned to the SDR

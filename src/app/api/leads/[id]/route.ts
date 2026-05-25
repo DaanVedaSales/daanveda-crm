@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceClient } from '@/lib/supabase/server'
 
 // GET /api/leads/:id — single lead + timeline + contacts
 export async function GET(
@@ -33,6 +33,73 @@ export async function GET(
     activities: activitiesRes.data ?? [],
     contacts: contactsRes.data ?? [],
   })
+}
+
+// DELETE /api/leads/:id — soft-delete lead (cascades to demos + deals)
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const leadId = params.id
+  const supabase = createServiceClient()
+
+  // Verify lead exists
+  const { data: lead, error: leadFetchErr } = await supabase
+    .from('leads')
+    .select('id, org_id')
+    .eq('id', leadId)
+    .single()
+
+  if (leadFetchErr || !lead) {
+    return NextResponse.json({ error: 'Lead not found' }, { status: 404 })
+  }
+
+  const now = new Date().toISOString()
+
+  // Soft-delete the lead
+  const { error: leadDelErr } = await supabase
+    .from('leads')
+    .update({ is_deleted: true, deleted_at: now })
+    .eq('id', leadId)
+
+  if (leadDelErr) return NextResponse.json({ error: leadDelErr.message }, { status: 500 })
+
+  // Cascade soft-delete demos for this lead
+  await supabase
+    .from('demos')
+    .update({ is_deleted: true, deleted_at: now })
+    .eq('lead_id', leadId)
+
+  // Cascade soft-delete deals for this lead
+  await supabase
+    .from('deals')
+    .update({ is_deleted: true, deleted_at: now })
+    .eq('lead_id', leadId)
+
+  // Get requesting user for activity log
+  const authClient = createClient()
+  const { data: { user } } = await authClient.auth.getUser()
+  let actorId: string | null = null
+  if (user) {
+    const { data: profile } = await supabase
+      .from('users')
+      .select('id')
+      .eq('auth_id', user.id)
+      .single()
+    actorId = profile?.id ?? null
+  }
+
+  if (actorId) {
+    await supabase.from('activities').insert({
+      lead_id: leadId,
+      org_id: lead.org_id,
+      user_id: actorId,
+      activity_type: 'note',
+      notes: 'Lead deleted.',
+    })
+  }
+
+  return NextResponse.json({ success: true })
 }
 
 // PATCH /api/leads/:id — update lead

@@ -22,6 +22,8 @@ export async function GET(req: NextRequest) {
   if (stage) query = query.eq('stage', stage)
   // Never return removed-from-board deals (ghosted soft-delete)
   query = query.or('removed_from_board.is.null,removed_from_board.eq.false')
+  // Never return soft-deleted deals
+  query = query.eq('is_deleted', false)
 
   const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

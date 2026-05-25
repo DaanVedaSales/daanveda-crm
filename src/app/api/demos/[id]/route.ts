@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceClient } from '@/lib/supabase/server'
 
 // PATCH /api/demos/:id — update demo status, reminder_sent, post-demo notes, reschedule, reassign
 //
@@ -166,4 +166,75 @@ export async function PATCH(
   await Promise.all(promises)
 
   return NextResponse.json(data)
+}
+
+// DELETE /api/demos/:id — closer deletes a demo; lead returns to SDR pool
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const demoId = params.id
+  const authClient = createClient()
+  const supabase = createServiceClient()
+
+  // Verify requesting user
+  const { data: { user } } = await authClient.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { data: actorProfile } = await supabase
+    .from('users')
+    .select('id')
+    .eq('auth_id', user.id)
+    .single()
+  const actorId = actorProfile?.id ?? ''
+
+  // Fetch demo
+  const { data: demo, error: demoFetchErr } = await supabase
+    .from('demos')
+    .select('id, lead_id, org_id, sdr_id, closer_id')
+    .eq('id', demoId)
+    .single()
+
+  if (demoFetchErr || !demo) {
+    return NextResponse.json({ error: 'Demo not found' }, { status: 404 })
+  }
+
+  const now = new Date().toISOString()
+
+  // Soft-delete the demo
+  await supabase
+    .from('demos')
+    .update({ is_deleted: true, deleted_at: now })
+    .eq('id', demoId)
+
+  // Soft-delete associated deal (by lead_id)
+  await supabase
+    .from('deals')
+    .update({ is_deleted: true, deleted_at: now })
+    .eq('lead_id', demo.lead_id)
+
+  // Return lead to SDR pool
+  await supabase
+    .from('leads')
+    .update({
+      phase: 'sdr',
+      status: 'assigned',
+      assigned_to: demo.sdr_id,
+      is_deleted: false,
+      updated_at: now,
+    })
+    .eq('id', demo.lead_id)
+
+  // Activity log
+  if (actorId) {
+    await supabase.from('activities').insert({
+      lead_id: demo.lead_id,
+      org_id: demo.org_id,
+      user_id: actorId,
+      activity_type: 'note',
+      notes: 'Demo deleted by closer. Lead returned to your pool.',
+    })
+  }
+
+  return NextResponse.json({ success: true })
 }
