@@ -164,8 +164,10 @@ export default function ActionsPage() {
 
   async function handleDeleteDemo(demo: DemoWithDetails) {
     setSaving(demo.id)
-    await fetch(`/api/demos/${demo.id}`, { method: 'DELETE' })
-    setAllDemos(prev => prev.filter(d => d.id !== demo.id))
+    const res = await fetch(`/api/demos/${demo.id}`, { method: 'DELETE' })
+    if (res.ok) {
+      setAllDemos(prev => prev.filter(d => d.id !== demo.id))
+    }
     setSaving(null)
   }
 

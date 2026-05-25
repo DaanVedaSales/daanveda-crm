@@ -32,10 +32,12 @@ export default function SDRLeadsPage() {
 
   async function deleteLead(leadId: string) {
     setDeletingLeadId(leadId)
-    await fetch(`/api/leads/${leadId}`, { method: 'DELETE' })
-    setLeads(prev => prev.filter(l => l.id !== leadId))
-    setFiltered(prev => prev.filter(l => l.id !== leadId))
-    if (selectedLead?.id === leadId) { setShowPanel(false); setSelectedLead(null) }
+    const res = await fetch(`/api/leads/${leadId}`, { method: 'DELETE' })
+    if (res.ok) {
+      setLeads(prev => prev.filter(l => l.id !== leadId))
+      setFiltered(prev => prev.filter(l => l.id !== leadId))
+      if (selectedLead?.id === leadId) { setShowPanel(false); setSelectedLead(null) }
+    }
     setDeletingLeadId(null)
     setConfirmDeleteId(null)
   }

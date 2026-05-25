@@ -56,13 +56,18 @@ export async function DELETE(
 
   const now = new Date().toISOString()
 
-  // Soft-delete the lead
-  const { error: leadDelErr } = await supabase
+  // Soft-delete the lead — select rows back to verify the UPDATE actually applied
+  const { data: deletedRows, error: leadDelErr } = await supabase
     .from('leads')
     .update({ is_deleted: true, deleted_at: now })
     .eq('id', leadId)
+    .select('id')
 
   if (leadDelErr) return NextResponse.json({ error: leadDelErr.message }, { status: 500 })
+  if (!deletedRows || deletedRows.length === 0) {
+    // UPDATE affected 0 rows — likely SUPABASE_SERVICE_ROLE_KEY not set or RLS blocked
+    return NextResponse.json({ error: 'Delete failed: record could not be updated. Check server configuration.' }, { status: 500 })
+  }
 
   // Cascade soft-delete demos for this lead
   await supabase

@@ -7,24 +7,38 @@ import { LEAD_STATUS_LABELS, LEAD_STATUS_COLORS } from '@/lib/constants'
 import type { LeadStatus } from '@/types/database'
 import { cn } from '@/lib/utils'
 import { CheckCircle, ChevronDown, ChevronUp, Trash2 } from 'lucide-react'
+import DateTimePicker from '@/components/ui/DateTimePicker'
 
 interface FollowupLead {
   id: string
+  org_id: string
   status: LeadStatus
   callback_date: string | null
   follow_up_date: string | null
   updated_at: string | null
-  organization: { name: string; location: string | null }
+  organization: { name: string; location: string | null; url: string | null; annual_revenue: number | null; team_size: number | null }
 }
 
 // ── Expandable detail for a follow-up lead ────────────────────────────────────
-function LeadExpandedDetail({ leadId }: { leadId: string }) {
+function LeadExpandedDetail({
+  leadId,
+  onContactsLoaded,
+  onBookDemo,
+}: {
+  leadId: string
+  onContactsLoaded: (contacts: any[]) => void
+  onBookDemo: () => void
+}) {
   const [data, setData] = useState<{ contacts: any[]; activities: any[] } | null>(null)
 
   useEffect(() => {
     fetch(`/api/leads/${leadId}`)
       .then(r => r.json())
-      .then(d => setData({ contacts: d.contacts ?? [], activities: d.activities ?? [] }))
+      .then(d => {
+        const contacts = d.contacts ?? []
+        setData({ contacts, activities: d.activities ?? [] })
+        onContactsLoaded(contacts)
+      })
   }, [leadId])
 
   if (!data) {
@@ -67,6 +81,14 @@ function LeadExpandedDetail({ leadId }: { leadId: string }) {
           </div>
         </div>
       )}
+
+      {/* Book Demo button */}
+      <button
+        onClick={onBookDemo}
+        className="w-full py-2 bg-[#059669] text-white text-xs font-semibold rounded-xl hover:bg-[#047857] transition-colors"
+      >
+        Book Demo
+      </button>
     </div>
   )
 }
@@ -110,7 +132,7 @@ export default function FollowupsPage() {
 
     const { data } = await supabase
       .from('leads')
-      .select('id, status, callback_date, follow_up_date, updated_at, organization:organizations(name, location)')
+      .select('id, org_id, status, callback_date, follow_up_date, updated_at, organization:organizations(name, location, url, annual_revenue, team_size)')
       .eq('assigned_to', profile.id)
       .eq('is_deleted', false)
       .in('status', ['call_again', 'not_reachable'])
@@ -169,6 +191,8 @@ export default function FollowupsPage() {
     const [expanded, setExpanded] = useState(false)
     const [confirmDelete, setConfirmDelete] = useState(false)
     const [deleting, setDeleting] = useState(false)
+    const [showBookDemo, setShowBookDemo] = useState(false)
+    const [contacts, setContacts] = useState<any[]>([])
     const since = daysSince(lead.updated_at)
     const isOverdue = lead.callback_date ? lead.callback_date < today : false
     const isToday = lead.callback_date === today
@@ -176,9 +200,12 @@ export default function FollowupsPage() {
     async function handleDelete(e: React.MouseEvent) {
       e.stopPropagation()
       setDeleting(true)
-      await fetch(`/api/leads/${lead.id}`, { method: 'DELETE' })
-      setLeads(prev => prev.filter(l => l.id !== lead.id))
+      const res = await fetch(`/api/leads/${lead.id}`, { method: 'DELETE' })
+      if (res.ok) {
+        setLeads(prev => prev.filter(l => l.id !== lead.id))
+      }
       setDeleting(false)
+      setConfirmDelete(false)
     }
 
     return (
@@ -241,7 +268,24 @@ export default function FollowupsPage() {
             }
           </div>
         </div>
-        {expanded && <LeadExpandedDetail leadId={lead.id} />}
+        {expanded && (
+          <LeadExpandedDetail
+            leadId={lead.id}
+            onContactsLoaded={setContacts}
+            onBookDemo={() => setShowBookDemo(true)}
+          />
+        )}
+        {showBookDemo && (
+          <BookDemoModal
+            lead={lead}
+            contacts={contacts}
+            onClose={() => setShowBookDemo(false)}
+            onSuccess={() => {
+              setShowBookDemo(false)
+              setLeads(prev => prev.filter(l => l.id !== lead.id))
+            }}
+          />
+        )}
       </div>
     )
   }
@@ -274,6 +318,211 @@ export default function FollowupsPage() {
         <Section title="Today" items={dueToday} accentColor="#1A56DB" />
         <Section title="Upcoming" items={upcoming} accentColor="#64748B" />
         <Section title="No Date Set" items={unscheduled} accentColor="#94A3B8" />
+      </div>
+    </div>
+  )
+}
+
+// ── Book Demo Modal (ported from My Leads page) ───────────────────────────────
+function BookDemoModal({ lead, contacts, onClose, onSuccess }: {
+  lead: FollowupLead
+  contacts: any[]
+  onClose: () => void
+  onSuccess: () => void
+}) {
+  const [demoDate, setDemoDate] = useState('')
+  const [painPoint, setPainPoint] = useState('')
+  const [demoExpectation, setDemoExpectation] = useState('')
+  const [extraNotes, setExtraNotes] = useState('')
+  const [signal, setSignal] = useState('warm')
+  const [closerId, setCloserId] = useState('')
+  const [closers, setClosers] = useState<{ id: string; name: string }[]>([])
+  const [saving, setSaving] = useState(false)
+  const primaryContact = contacts.find(c => c.is_primary) ?? contacts[0]
+
+  const canSubmit = painPoint.trim().length >= 5 && demoExpectation.trim().length >= 5 && !!closerId && !!demoDate
+
+  useEffect(() => {
+    fetch('/api/closers')
+      .then(r => r.json())
+      .then(data => {
+        const activeClosers = Array.isArray(data) ? data : []
+        setClosers(activeClosers)
+        if (activeClosers.length === 1) setCloserId(activeClosers[0].id)
+      })
+      .catch(() => setClosers([]))
+  }, [])
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!canSubmit) return
+    setSaving(true)
+    const res = await fetch('/api/demos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        lead_id: lead.id,
+        org_id: lead.org_id,
+        demo_date: demoDate,
+        pain_point: painPoint.trim(),
+        demo_expectation: demoExpectation.trim(),
+        sdr_summary: extraNotes.trim() || null,
+        sdr_interest_signal: signal,
+        closer_id: closerId,
+      }),
+    })
+    if (res.ok) onSuccess()
+    else {
+      const data = await res.json()
+      alert(data.error)
+    }
+    setSaving(false)
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-start justify-between mb-4">
+          <div>
+            <h3 className="font-semibold text-[#0F172A] text-base">Book Demo</h3>
+            <p className="text-xs text-[#64748B] mt-0.5">This will hand off the lead to the selected Closer</p>
+          </div>
+          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#64748B] text-xl leading-none">×</button>
+        </div>
+
+        {/* Org context */}
+        <div className="bg-[#F8FAFC] rounded-xl border border-[#E2E8F0] p-3.5 mb-4 space-y-1.5">
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8]">Organisation</p>
+          <p className="font-semibold text-[#0F172A] text-sm">{lead.organization?.name}</p>
+          <div className="flex flex-wrap gap-3 text-xs text-[#64748B]">
+            {lead.organization?.location && <span>{lead.organization.location}</span>}
+            {lead.organization?.url && (
+              <a href={lead.organization.url} target="_blank" rel="noreferrer" className="text-[#1A56DB] hover:underline">
+                {lead.organization.url}
+              </a>
+            )}
+            {lead.organization?.annual_revenue && <span>₹{(lead.organization.annual_revenue / 100000).toFixed(0)}L revenue</span>}
+            {lead.organization?.team_size && <span>{lead.organization.team_size} people</span>}
+          </div>
+          {primaryContact && (
+            <div className="flex gap-3 text-xs text-[#64748B] pt-1 border-t border-[#E2E8F0] mt-1">
+              <span className="font-medium text-[#0F172A]">KDM: {primaryContact.name}</span>
+              {primaryContact.designation && <span>{primaryContact.designation}</span>}
+              {primaryContact.phone && <span>{primaryContact.phone}</span>}
+            </div>
+          )}
+        </div>
+
+        <form onSubmit={submit} className="space-y-3.5">
+          {/* Demo date */}
+          <div>
+            <label className="block text-[10px] font-semibold uppercase tracking-widest text-[#64748B] mb-1">
+              Demo Date &amp; Time <span className="text-red-500">*</span>
+            </label>
+            <DateTimePicker value={demoDate} onChange={setDemoDate} placeholder="Pick demo date & time" />
+          </div>
+
+          {/* Closer */}
+          <div>
+            <label className="block text-[10px] font-semibold uppercase tracking-widest text-[#64748B] mb-1">
+              Assign Closer <span className="text-red-500">*</span>
+            </label>
+            {closers.length === 0 ? (
+              <p className="text-xs text-[#94A3B8] py-2">Loading closers...</p>
+            ) : (
+              <select
+                value={closerId}
+                onChange={e => setCloserId(e.target.value)}
+                required
+                className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20"
+              >
+                <option value="">— Select a Closer —</option>
+                {closers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            )}
+          </div>
+
+          {/* Interest signal */}
+          <div>
+            <label className="block text-[10px] font-semibold uppercase tracking-widest text-[#64748B] mb-1">Interest Signal</label>
+            <div className="flex gap-2">
+              {[{ value: 'hot', label: 'Hot', color: '#EF4444' }, { value: 'warm', label: 'Warm', color: '#F59E0B' }, { value: 'cold', label: 'Cold', color: '#64748B' }].map(s => (
+                <button
+                  key={s.value}
+                  type="button"
+                  onClick={() => setSignal(s.value)}
+                  className={cn(
+                    'flex-1 py-1.5 text-xs font-semibold rounded-lg border transition-colors',
+                    signal === s.value ? 'text-white border-transparent' : 'border-[#E2E8F0] text-[#64748B] hover:border-[#CBD5E1]'
+                  )}
+                  style={signal === s.value ? { backgroundColor: s.color, borderColor: s.color } : {}}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Context for Closer */}
+          <div className="space-y-3 p-3.5 bg-[#F8FAFC] rounded-xl border border-[#E2E8F0]">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-[#64748B]">
+              Context for Closer <span className="text-red-500">*</span>
+            </p>
+            <div>
+              <label className="block text-xs font-medium text-[#374151] mb-1">What is their main pain point?</label>
+              <textarea
+                value={painPoint}
+                onChange={e => setPainPoint(e.target.value)}
+                required
+                rows={2}
+                placeholder="e.g. They struggle with donor retention..."
+                className={cn(
+                  'w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 resize-none',
+                  painPoint.length > 0 && painPoint.trim().length < 5 ? 'border-red-300 focus:ring-red-200/20' : 'border-[#E2E8F0] focus:ring-[#1A56DB]/20'
+                )}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-[#374151] mb-1">What are they expecting from the demo?</label>
+              <textarea
+                value={demoExpectation}
+                onChange={e => setDemoExpectation(e.target.value)}
+                required
+                rows={2}
+                placeholder="e.g. They want to see the reporting dashboard..."
+                className={cn(
+                  'w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 resize-none',
+                  demoExpectation.length > 0 && demoExpectation.trim().length < 5 ? 'border-red-300 focus:ring-red-200/20' : 'border-[#E2E8F0] focus:ring-[#1A56DB]/20'
+                )}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-[#64748B] mb-1">
+                Anything else the closer should know? <span className="font-normal text-[#94A3B8]">(optional)</span>
+              </label>
+              <textarea
+                value={extraNotes}
+                onChange={e => setExtraNotes(e.target.value)}
+                rows={2}
+                placeholder="Budget signals, decision timeline, objections..."
+                className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20 resize-none"
+              />
+            </div>
+          </div>
+
+          <div className="flex gap-2 pt-1">
+            <button
+              type="submit"
+              disabled={saving || !canSubmit}
+              className="flex-1 py-2 bg-[#059669] text-white text-sm font-medium rounded-lg hover:bg-[#047857] disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+            >
+              {saving ? 'Booking...' : 'Confirm Demo Booking'}
+            </button>
+            <button type="button" onClick={onClose} className="py-2 px-4 border border-[#E2E8F0] text-sm text-[#64748B] rounded-lg hover:bg-[#F8FAFC]">
+              Cancel
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   )

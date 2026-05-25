@@ -351,6 +351,15 @@ function DealPanel({ deal, contacts, onClose, onUpdate, onDelete }: {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting,    setDeleting]    = useState(false)
   const [kdmExpanded, setKdmExpanded] = useState(false)
+  // KDM edit/add state — Closer can edit contacts and add new ones
+  const [contactList, setContactList] = useState<any[]>(contacts)
+  // Sync contactList when contacts prop is populated async from parent fetch
+  useEffect(() => { setContactList(contacts) }, [contacts])
+  const [editingContactId, setEditingContactId] = useState<string | null>(null)
+  const [editContactForm, setEditContactForm] = useState({ name: '', designation: '', phone: '', email: '' })
+  const [showAddContact, setShowAddContact] = useState(false)
+  const [addContactForm, setAddContactForm] = useState({ name: '', designation: '', phone: '', email: '' })
+  const [contactSaving, setContactSaving] = useState(false)
 
   // POC state
   const [pocName,        setPocName]        = useState(deal.poc_name ?? '')
@@ -384,6 +393,57 @@ function DealPanel({ deal, contacts, onClose, onUpdate, onDelete }: {
     if (billingName)  payload.billing_name = billingName
     await fetch(`/api/deals/${deal.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
     setSaving(false); onUpdate(); onClose()
+  }
+
+  function startEditContact(c: any) {
+    setEditingContactId(c.id)
+    setEditContactForm({ name: c.name ?? '', designation: c.designation ?? '', phone: c.phone ?? '', email: c.email ?? '' })
+    setShowAddContact(false)
+  }
+
+  async function saveContactEdit() {
+    if (!editingContactId) return
+    setContactSaving(true)
+    const res = await fetch(`/api/contacts/${editingContactId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: editContactForm.name.trim(),
+        designation: editContactForm.designation.trim() || null,
+        phone: editContactForm.phone.trim() || null,
+        email: editContactForm.email.trim() || null,
+      }),
+    })
+    if (res.ok) {
+      const updated = await res.json()
+      setContactList(prev => prev.map(c => c.id === editingContactId ? { ...c, ...updated } : c))
+      setEditingContactId(null)
+    }
+    setContactSaving(false)
+  }
+
+  async function saveNewContact() {
+    if (!addContactForm.name.trim()) return
+    setContactSaving(true)
+    const res = await fetch('/api/contacts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        org_id: deal.organization?.id,
+        name: addContactForm.name.trim(),
+        designation: addContactForm.designation.trim() || null,
+        phone: addContactForm.phone.trim() || null,
+        email: addContactForm.email.trim() || null,
+        is_primary: false,
+      }),
+    })
+    if (res.ok) {
+      const newContact = await res.json()
+      setContactList(prev => [...prev, newContact])
+      setAddContactForm({ name: '', designation: '', phone: '', email: '' })
+      setShowAddContact(false)
+    }
+    setContactSaving(false)
   }
 
   async function savePoc() {
@@ -427,13 +487,16 @@ function DealPanel({ deal, contacts, onClose, onUpdate, onDelete }: {
 
   async function handleDelete() {
     setDeleting(true)
-    // If demo_id exists, DELETE /api/demos/:id (cascades lead return to SDR)
+    // If demo_id exists, DELETE /api/demos/:id (cascades lead return to SDR follow-up queue)
     // Otherwise just soft-delete deal directly (shouldn't happen but be safe)
+    let success = true
     if (deal.demo?.id) {
-      await fetch(`/api/demos/${deal.demo.id}`, { method: 'DELETE' })
+      const res = await fetch(`/api/demos/${deal.demo.id}`, { method: 'DELETE' })
+      success = res.ok
     }
     setDeleting(false)
-    onDelete(deal.id)
+    if (success) onDelete(deal.id)
+    else setConfirmDelete(false)
   }
 
   const stageColor = DEAL_STAGE_COLORS[deal.stage]
@@ -563,41 +626,136 @@ function DealPanel({ deal, contacts, onClose, onUpdate, onDelete }: {
           </div>
 
           {/* ── Key Decision Makers ──────────────────────────────────────── */}
-          {contacts.length > 0 && (
-            <div className="rounded-xl border border-[#E2E8F0] overflow-hidden">
+          <div className="rounded-xl border border-[#E2E8F0] overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 bg-[#F8FAFC]">
               <button
                 onClick={() => setKdmExpanded(p => !p)}
-                className="w-full flex items-center justify-between px-4 py-3 bg-[#F8FAFC] hover:bg-[#F1F5F9] transition-colors text-left"
+                className="flex items-center gap-2 text-left flex-1"
               >
                 <p className="text-label text-[#94A3B8]">
-                  Key Decision Makers · {contacts.length}
+                  Key Decision Makers · {contactList.length}
                 </p>
                 {kdmExpanded
                   ? <ChevronDown className="w-3.5 h-3.5 text-[#94A3B8] rotate-180 transition-transform" strokeWidth={1.75} />
                   : <ChevronDown className="w-3.5 h-3.5 text-[#94A3B8] transition-transform" strokeWidth={1.75} />
                 }
               </button>
-              {kdmExpanded && (
-                <div className="p-3 space-y-2 bg-white">
-                  {contacts.map((c: any) => (
-                    <div key={c.id} className="bg-[#F8FAFC] rounded-lg p-3 border border-[#F1F5F9]">
-                      <div className="flex items-center gap-2 mb-0.5">
-                        <p className="text-[13px] font-medium text-[#0F172A]">{c.name}</p>
-                        {c.is_primary && (
-                          <span className="text-[9px] font-semibold bg-[#1A56DB] text-white px-1.5 py-0.5 rounded-full">Primary</span>
-                        )}
-                      </div>
-                      {c.designation && <p className="text-[11px] text-[#64748B]">{c.designation}</p>}
-                      <div className="flex gap-3 mt-1 text-[11px] text-[#94A3B8]">
-                        {c.phone && <span>{c.phone}</span>}
-                        {c.email && <span>{c.email}</span>}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+              {kdmExpanded && contactList.length < 3 && !showAddContact && (
+                <button
+                  onClick={() => { setShowAddContact(true); setEditingContactId(null) }}
+                  className="text-[11px] font-medium text-[#1A56DB] hover:text-[#1743B0] transition-colors shrink-0 ml-2"
+                >
+                  + Add KDM
+                </button>
               )}
             </div>
-          )}
+            {kdmExpanded && (
+              <div className="p-3 space-y-2 bg-white">
+                {contactList.map((c: any) => (
+                  editingContactId === c.id ? (
+                    <div key={c.id} className="bg-[#F8FAFC] rounded-lg p-3 border border-[#1A56DB]/30 space-y-2">
+                      <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8]">
+                        Editing {c.is_primary ? 'Primary KDM' : 'KDM'}
+                      </p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[10px] text-[#94A3B8] mb-0.5">Name</label>
+                          <input value={editContactForm.name} onChange={e => setEditContactForm(f => ({ ...f, name: e.target.value }))} className="field text-sm" placeholder="Full name" />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] text-[#94A3B8] mb-0.5">Designation</label>
+                          <input value={editContactForm.designation} onChange={e => setEditContactForm(f => ({ ...f, designation: e.target.value }))} className="field text-sm" placeholder="CEO, CFO..." />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[10px] text-[#94A3B8] mb-0.5">Phone</label>
+                          <input value={editContactForm.phone} onChange={e => setEditContactForm(f => ({ ...f, phone: e.target.value }))} className="field text-sm" placeholder="+91..." />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] text-[#94A3B8] mb-0.5">Email</label>
+                          <input value={editContactForm.email} onChange={e => setEditContactForm(f => ({ ...f, email: e.target.value }))} className="field text-sm" placeholder="name@org.com" />
+                        </div>
+                      </div>
+                      <div className="flex gap-2 pt-1">
+                        <button onClick={saveContactEdit} disabled={contactSaving || !editContactForm.name.trim()} className="flex-1 py-1.5 text-xs font-medium bg-[#1A56DB] text-white rounded-lg hover:bg-[#1743B0] disabled:opacity-60 transition-colors">
+                          {contactSaving ? 'Saving…' : 'Save'}
+                        </button>
+                        <button onClick={() => setEditingContactId(null)} className="py-1.5 px-3 text-xs border border-[#E2E8F0] text-[#64748B] rounded-lg hover:bg-[#F8FAFC]">Cancel</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div key={c.id} className="bg-[#F8FAFC] rounded-lg p-3 border border-[#F1F5F9] group">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <p className="text-[13px] font-medium text-[#0F172A]">{c.name}</p>
+                            {c.is_primary && (
+                              <span className="text-[9px] font-semibold bg-[#1A56DB] text-white px-1.5 py-0.5 rounded-full">Primary</span>
+                            )}
+                          </div>
+                          {c.designation && <p className="text-[11px] text-[#64748B]">{c.designation}</p>}
+                          <div className="flex gap-3 mt-1 text-[11px] text-[#94A3B8]">
+                            {c.phone && <span>{c.phone}</span>}
+                            {c.email && <span>{c.email}</span>}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => startEditContact(c)}
+                          className="opacity-0 group-hover:opacity-100 text-[11px] font-medium text-[#64748B] hover:text-[#1A56DB] transition-all shrink-0 ml-2"
+                        >
+                          Edit
+                        </button>
+                      </div>
+                    </div>
+                  )
+                ))}
+
+                {/* Add contact form */}
+                {showAddContact && (
+                  <div className="bg-[#F0F9FF] rounded-lg p-3 border border-[#BAE6FD] space-y-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-[#0891B2]">New KDM</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[10px] text-[#94A3B8] mb-0.5">Name *</label>
+                        <input value={addContactForm.name} onChange={e => setAddContactForm(f => ({ ...f, name: e.target.value }))} className="field text-sm" placeholder="Full name" />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-[#94A3B8] mb-0.5">Designation</label>
+                        <input value={addContactForm.designation} onChange={e => setAddContactForm(f => ({ ...f, designation: e.target.value }))} className="field text-sm" placeholder="CEO, CFO..." />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[10px] text-[#94A3B8] mb-0.5">Phone</label>
+                        <input value={addContactForm.phone} onChange={e => setAddContactForm(f => ({ ...f, phone: e.target.value }))} className="field text-sm" placeholder="+91..." />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-[#94A3B8] mb-0.5">Email</label>
+                        <input value={addContactForm.email} onChange={e => setAddContactForm(f => ({ ...f, email: e.target.value }))} className="field text-sm" placeholder="name@org.com" />
+                      </div>
+                    </div>
+                    <div className="flex gap-2 pt-1">
+                      <button onClick={saveNewContact} disabled={contactSaving || !addContactForm.name.trim()} className="flex-1 py-1.5 text-xs font-medium bg-[#1A56DB] text-white rounded-lg hover:bg-[#1743B0] disabled:opacity-60 transition-colors">
+                        {contactSaving ? 'Adding…' : 'Add KDM'}
+                      </button>
+                      <button onClick={() => { setShowAddContact(false); setAddContactForm({ name: '', designation: '', phone: '', email: '' }) }} className="py-1.5 px-3 text-xs border border-[#E2E8F0] text-[#64748B] rounded-lg hover:bg-[#F8FAFC]">Cancel</button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Show add button at bottom when no contacts */}
+                {contactList.length === 0 && !showAddContact && (
+                  <button
+                    onClick={() => setShowAddContact(true)}
+                    className="w-full py-2 border border-dashed border-[#E2E8F0] text-[11px] text-[#64748B] rounded-lg hover:border-[#1A56DB] hover:text-[#1A56DB] transition-colors"
+                  >
+                    + Add KDM contact
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
 
           {/* ── Deal Timeline ─────────────────────────────────────────────── */}
           {(() => {

@@ -213,12 +213,15 @@ export async function DELETE(
     .update({ is_deleted: true, deleted_at: now })
     .eq('lead_id', demo.lead_id)
 
-  // Return lead to SDR pool
+  // Return lead to SDR follow-up queue — status=call_again with today as callback_date
+  // so it appears in the SDR's Follow-up Queue immediately
+  const todayDate = new Date().toISOString().split('T')[0]
   await supabase
     .from('leads')
     .update({
       phase: 'sdr',
-      status: 'assigned',
+      status: 'call_again',
+      callback_date: todayDate,
       assigned_to: demo.sdr_id,
       is_deleted: false,
       updated_at: now,
@@ -232,7 +235,7 @@ export async function DELETE(
       org_id: demo.org_id,
       user_id: actorId,
       activity_type: 'note',
-      notes: 'Demo deleted by closer. Lead returned to your pool.',
+      notes: 'Demo removed by closer — lead returned to your follow-up queue. Follow up to determine next steps.',
     })
   }
 

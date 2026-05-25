@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react'
 import TopBar from '@/components/layout/TopBar'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
-import { Bell, BellOff, Clock, CalendarCheck, AlertCircle, ChevronDown, ChevronUp, Trash2 } from 'lucide-react'
+import { Bell, BellOff, Clock, CalendarCheck, AlertCircle, ChevronDown, ChevronUp, Trash2, Pencil } from 'lucide-react'
+import DateTimePicker from '@/components/ui/DateTimePicker'
 
 interface BookedDemo {
   id: string
@@ -142,19 +143,19 @@ export default function SDRDemosPage() {
         )}
 
         {overdueDemos.length > 0 && (
-          <DemoSection title="Overdue" demos={overdueDemos} onRemind={markReminder} reminding={reminding} onDelete={deleteDemoFromList} urgent />
+          <DemoSection title="Overdue" demos={overdueDemos} onRemind={markReminder} reminding={reminding} onDelete={deleteDemoFromList} onDemoUpdated={fetchDemos} urgent />
         )}
         {todayDemos.length > 0 && (
-          <DemoSection title="Today" demos={todayDemos} onRemind={markReminder} reminding={reminding} onDelete={deleteDemoFromList} urgent />
+          <DemoSection title="Today" demos={todayDemos} onRemind={markReminder} reminding={reminding} onDelete={deleteDemoFromList} onDemoUpdated={fetchDemos} urgent />
         )}
         {tomorrowDemos.length > 0 && (
-          <DemoSection title="Tomorrow" demos={tomorrowDemos} onRemind={markReminder} reminding={reminding} onDelete={deleteDemoFromList} urgent />
+          <DemoSection title="Tomorrow" demos={tomorrowDemos} onRemind={markReminder} reminding={reminding} onDelete={deleteDemoFromList} onDemoUpdated={fetchDemos} urgent />
         )}
         {thisWeekDemos.length > 0 && (
-          <DemoSection title="This Week" demos={thisWeekDemos} onRemind={markReminder} reminding={reminding} onDelete={deleteDemoFromList} />
+          <DemoSection title="This Week" demos={thisWeekDemos} onRemind={markReminder} reminding={reminding} onDelete={deleteDemoFromList} onDemoUpdated={fetchDemos} />
         )}
         {upcomingDemos.length > 0 && (
-          <DemoSection title="Upcoming" demos={upcomingDemos} onRemind={markReminder} reminding={reminding} onDelete={deleteDemoFromList} />
+          <DemoSection title="Upcoming" demos={upcomingDemos} onRemind={markReminder} reminding={reminding} onDelete={deleteDemoFromList} onDemoUpdated={fetchDemos} />
         )}
 
       </div>
@@ -163,13 +164,14 @@ export default function SDRDemosPage() {
 }
 
 function DemoSection({
-  title, demos, onRemind, reminding, onDelete, urgent = false
+  title, demos, onRemind, reminding, onDelete, onDemoUpdated, urgent = false
 }: {
   title: string
   demos: BookedDemo[]
   onRemind: (id: string) => void
   reminding: string | null
   onDelete: (leadId: string) => void
+  onDemoUpdated: () => void
   urgent?: boolean
 }) {
   return (
@@ -181,7 +183,7 @@ function DemoSection({
         {title} &middot; {demos.length}
       </h2>
       <div className="space-y-3">
-        {demos.map(demo => <DemoCard key={demo.id} demo={demo} onRemind={onRemind} reminding={reminding} onDelete={onDelete} />)}
+        {demos.map(demo => <DemoCard key={demo.id} demo={demo} onRemind={onRemind} reminding={reminding} onDelete={onDelete} onDemoUpdated={onDemoUpdated} />)}
       </div>
     </div>
   )
@@ -266,23 +268,26 @@ function DemoExpandedDetail({ demo }: { demo: BookedDemo }) {
   )
 }
 
-function DemoCard({ demo, onRemind, reminding, onDelete }: {
+function DemoCard({ demo, onRemind, reminding, onDelete, onDemoUpdated }: {
   demo: BookedDemo
   onRemind: (id: string) => void
   reminding: string | null
   onDelete: (leadId: string) => void
+  onDemoUpdated: () => void
 }) {
   const [expanded, setExpanded] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [showEdit, setShowEdit] = useState(false)
   const days = daysUntil(demo.demo_date)
 
   async function handleDelete() {
     if (!demo.lead_id) return
     setDeleting(true)
-    await fetch(`/api/leads/${demo.lead_id}`, { method: 'DELETE' })
-    onDelete(demo.lead_id)
+    const res = await fetch(`/api/leads/${demo.lead_id}`, { method: 'DELETE' })
+    if (res.ok) onDelete(demo.lead_id)
     setDeleting(false)
+    setConfirmDelete(false)
   }
   const isUrgent = days <= 1
   const isOverdue = days < 0
@@ -354,6 +359,17 @@ function DemoCard({ demo, onRemind, reminding, onDelete }: {
             </button>
           )}
 
+          {/* Edit button */}
+          {!confirmDelete && (
+            <button
+              onClick={() => setShowEdit(true)}
+              className="flex items-center gap-1 text-[10px] text-[#94A3B8] hover:text-[#1A56DB] transition-colors"
+              title="Edit demo"
+            >
+              <Pencil className="w-3 h-3" />
+            </button>
+          )}
+
           {/* Delete button / inline confirmation */}
           {confirmDelete ? (
             <div className="flex items-center gap-1.5 text-xs">
@@ -405,6 +421,215 @@ function DemoCard({ demo, onRemind, reminding, onDelete }: {
 
       {/* Expanded detail: pain point, demo expectation, KDM contact, activity log */}
       {expanded && <DemoExpandedDetail demo={demo} />}
+
+      {/* Edit Demo Modal */}
+      {showEdit && (
+        <EditDemoModal
+          demo={demo}
+          onClose={() => setShowEdit(false)}
+          onSuccess={() => { setShowEdit(false); onDemoUpdated() }}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── Edit Demo Modal ───────────────────────────────────────────────────────────
+// Allows SDR to reschedule the demo and edit KDM contact details
+function EditDemoModal({ demo, onClose, onSuccess }: {
+  demo: BookedDemo
+  onClose: () => void
+  onSuccess: () => void
+}) {
+  const [demoDate, setDemoDate] = useState(demo.demo_date)
+  const [contacts, setContacts] = useState<any[]>([])
+  const [loadingContacts, setLoadingContacts] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  // Contact edit state — indexed by contact id
+  const [contactEdits, setContactEdits] = useState<Record<string, { name: string; designation: string; phone: string; email: string }>>({})
+
+  useEffect(() => {
+    if (!demo.lead_id) { setLoadingContacts(false); return }
+    fetch(`/api/leads/${demo.lead_id}`)
+      .then(r => r.json())
+      .then(d => {
+        const ctcs = d.contacts ?? []
+        setContacts(ctcs)
+        // Pre-fill edit state for each contact
+        const edits: Record<string, any> = {}
+        ctcs.forEach((c: any) => {
+          edits[c.id] = { name: c.name ?? '', designation: c.designation ?? '', phone: c.phone ?? '', email: c.email ?? '' }
+        })
+        setContactEdits(edits)
+        setLoadingContacts(false)
+      })
+  }, [demo.lead_id])
+
+  function updateContactField(contactId: string, field: string, value: string) {
+    setContactEdits(prev => ({ ...prev, [contactId]: { ...prev[contactId], [field]: value } }))
+  }
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    setError('')
+    setSaving(true)
+
+    const tasks: Promise<any>[] = []
+
+    // Reschedule demo if date changed
+    if (demoDate !== demo.demo_date) {
+      tasks.push(
+        fetch(`/api/demos/${demo.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reschedule_date: demoDate }),
+        })
+      )
+    }
+
+    // Update each contact if changed
+    for (const c of contacts) {
+      const edit = contactEdits[c.id]
+      if (!edit) continue
+      const changed =
+        edit.name !== (c.name ?? '') ||
+        edit.designation !== (c.designation ?? '') ||
+        edit.phone !== (c.phone ?? '') ||
+        edit.email !== (c.email ?? '')
+      if (changed) {
+        tasks.push(
+          fetch(`/api/contacts/${c.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: edit.name.trim(),
+              designation: edit.designation.trim() || null,
+              phone: edit.phone.trim() || null,
+              email: edit.email.trim() || null,
+            }),
+          })
+        )
+      }
+    }
+
+    if (tasks.length === 0) { setSaving(false); onClose(); return }
+
+    const results = await Promise.all(tasks)
+    const failed = results.find(r => !r.ok)
+    if (failed) {
+      const d = await failed.json()
+      setError(d.error ?? 'Save failed')
+      setSaving(false)
+      return
+    }
+
+    setSaving(false)
+    onSuccess()
+  }
+
+  const inputCls = 'w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20 focus:border-[#1A56DB]'
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-start justify-between mb-5">
+          <div>
+            <h3 className="font-semibold text-[#0F172A] text-base">Edit Demo</h3>
+            <p className="text-xs text-[#64748B] mt-0.5">{demo.organization?.name}</p>
+          </div>
+          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#64748B] text-xl leading-none">×</button>
+        </div>
+
+        <form onSubmit={submit} className="space-y-5">
+
+          {/* Demo date/time */}
+          <div>
+            <label className="block text-[10px] font-semibold uppercase tracking-widest text-[#64748B] mb-1.5">
+              Demo Date &amp; Time
+            </label>
+            <DateTimePicker value={demoDate} onChange={setDemoDate} placeholder="Pick demo date & time" />
+          </div>
+
+          {/* KDM contacts */}
+          {!loadingContacts && contacts.length > 0 && (
+            <div className="space-y-3 pt-2 border-t border-[#F1F5F9]">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8]">Key Decision Makers</p>
+              {contacts.map((c: any, idx: number) => (
+                <div key={c.id} className="space-y-2.5 p-3 bg-[#F8FAFC] rounded-xl border border-[#E2E8F0]">
+                  <p className="text-[10px] font-semibold text-[#64748B]">
+                    {c.is_primary ? 'Primary KDM' : `KDM ${idx + 1}`}
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-xs text-[#64748B] mb-1">Name</label>
+                      <input
+                        value={contactEdits[c.id]?.name ?? ''}
+                        onChange={e => updateContactField(c.id, 'name', e.target.value)}
+                        className={inputCls}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-[#64748B] mb-1">Designation</label>
+                      <input
+                        value={contactEdits[c.id]?.designation ?? ''}
+                        onChange={e => updateContactField(c.id, 'designation', e.target.value)}
+                        placeholder="CEO, CFO..."
+                        className={inputCls}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-xs text-[#64748B] mb-1">Phone</label>
+                      <input
+                        value={contactEdits[c.id]?.phone ?? ''}
+                        onChange={e => updateContactField(c.id, 'phone', e.target.value)}
+                        placeholder="+91 98765 43210"
+                        className={inputCls}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-[#64748B] mb-1">Email</label>
+                      <input
+                        type="email"
+                        value={contactEdits[c.id]?.email ?? ''}
+                        onChange={e => updateContactField(c.id, 'email', e.target.value)}
+                        placeholder="name@org.com"
+                        className={inputCls}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {loadingContacts && (
+            <div className="h-20 bg-[#F1F5F9] rounded-xl skeleton" />
+          )}
+
+          {error && <p className="text-xs text-[#EF4444]">{error}</p>}
+
+          <div className="flex gap-2 pt-1">
+            <button
+              type="submit"
+              disabled={saving}
+              className="flex-1 py-2.5 bg-[#1A56DB] text-white text-sm font-medium rounded-xl hover:bg-[#1e40af] disabled:opacity-60 transition-colors"
+            >
+              {saving ? 'Saving...' : 'Save Changes'}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="py-2.5 px-4 border border-[#E2E8F0] text-sm text-[#64748B] rounded-xl hover:bg-[#F8FAFC]"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   )
 }
