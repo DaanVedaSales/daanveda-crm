@@ -24,12 +24,19 @@ function LeadExpandedDetail({
   leadId,
   onContactsLoaded,
   onBookDemo,
+  onRescheduled,
+  currentCallbackDate,
 }: {
   leadId: string
   onContactsLoaded: (contacts: any[]) => void
   onBookDemo: () => void
+  onRescheduled: () => void
+  currentCallbackDate: string | null
 }) {
   const [data, setData] = useState<{ contacts: any[]; activities: any[] } | null>(null)
+  const [rescheduleDate, setRescheduleDate] = useState(currentCallbackDate?.split('T')[0] ?? '')
+  const [rescheduling, setRescheduling] = useState(false)
+  const [rescheduled, setRescheduled] = useState(false)
 
   useEffect(() => {
     fetch(`/api/leads/${leadId}`)
@@ -40,6 +47,21 @@ function LeadExpandedDetail({
         onContactsLoaded(contacts)
       })
   }, [leadId])
+
+  async function handleReschedule() {
+    if (!rescheduleDate) return
+    setRescheduling(true)
+    const res = await fetch(`/api/leads/${leadId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ callback_date: rescheduleDate }),
+    })
+    setRescheduling(false)
+    if (res.ok) {
+      setRescheduled(true)
+      setTimeout(() => onRescheduled(), 800)
+    }
+  }
 
   if (!data) {
     return <div className="px-5 pb-4"><div className="h-12 bg-[#F1F5F9] rounded-lg skeleton" /></div>
@@ -63,24 +85,45 @@ function LeadExpandedDetail({
       )}
       {!primary && <p className="text-xs text-[#94A3B8]">No contact on record.</p>}
 
-      {/* Activity log */}
+      {/* Last contact — most recent activity only */}
       {data.activities.length > 0 && (
-        <div>
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8] mb-2">Recent Activity</p>
-          <div className="space-y-2 max-h-40 overflow-y-auto">
-            {data.activities.slice(0, 5).map((a: any) => (
-              <div key={a.id} className="flex gap-2">
-                <div className="w-1.5 h-1.5 rounded-full bg-[#1A56DB] mt-1.5 shrink-0" />
-                <div>
-                  <p className="text-xs font-medium text-[#0F172A] capitalize">{a.activity_type.replace('_', ' ')}{a.channel ? ` · ${a.channel}` : ''}</p>
-                  <p className="text-xs text-[#64748B]">{a.notes}</p>
-                  <p className="text-[10px] text-[#94A3B8]">{new Date(a.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</p>
-                </div>
-              </div>
-            ))}
+        <div className="bg-[#F8FAFC] rounded-xl p-3 border border-[#E2E8F0]">
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8] mb-1.5">Last Contact</p>
+          <div className="flex items-start gap-2">
+            <span className="text-[10px] font-semibold text-[#1A56DB] bg-blue-50 border border-[#BFDBFE] px-1.5 py-0.5 rounded-full shrink-0 capitalize">
+              {data.activities[0].channel ?? data.activities[0].activity_type.replace('_', ' ')}
+            </span>
+            <div className="flex-1 min-w-0">
+              {data.activities[0].notes && (
+                <p className="text-xs text-[#374151] leading-relaxed">{data.activities[0].notes}</p>
+              )}
+              <p className="text-[10px] text-[#94A3B8] mt-0.5">
+                {new Date(data.activities[0].created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+              </p>
+            </div>
           </div>
         </div>
       )}
+
+      {/* Next callback date — update inline */}
+      <div>
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8] mb-1.5">Next Callback</p>
+        <div className="flex gap-2">
+          <input
+            type="date"
+            value={rescheduleDate}
+            onChange={e => { setRescheduleDate(e.target.value); setRescheduled(false) }}
+            className="flex-1 px-3 py-1.5 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20 focus:border-[#1A56DB]"
+          />
+          <button
+            onClick={handleReschedule}
+            disabled={!rescheduleDate || rescheduling}
+            className="px-3 py-1.5 text-xs font-semibold bg-[#0F172A] text-white rounded-lg hover:bg-[#1E293B] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            {rescheduling ? '…' : rescheduled ? 'Saved' : 'Update'}
+          </button>
+        </div>
+      </div>
 
       {/* Book Demo button */}
       <button
@@ -273,6 +316,8 @@ export default function FollowupsPage() {
             leadId={lead.id}
             onContactsLoaded={setContacts}
             onBookDemo={() => setShowBookDemo(true)}
+            onRescheduled={fetchLeads}
+            currentCallbackDate={lead.callback_date}
           />
         )}
         {showBookDemo && (

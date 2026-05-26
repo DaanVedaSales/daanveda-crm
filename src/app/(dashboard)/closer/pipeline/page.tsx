@@ -1299,7 +1299,14 @@ export default function PipelinePage() {
     if (!profile) return
     const res  = await fetch(`/api/deals?closer_id=${profile.id}`)
     const deals: DealWithDetails[] = await res.json()
-    const visible = Array.isArray(deals) ? deals.filter(d => !d.removed_from_board) : []
+    // Terminal stages only show current month's deals — prior months auto-clear to deal history
+    const now = new Date()
+    const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
+    const visible = Array.isArray(deals) ? deals.filter(d => {
+      if (d.removed_from_board) return false
+      if (TERMINAL_STAGES.includes(d.stage)) return d.updated_at >= monthStart
+      return true
+    }) : []
     setColumns(KANBAN_STAGES.map(stage => ({ stage, deals: visible.filter(d => d.stage === stage) })))
     setLoading(false)
   }

@@ -17,27 +17,28 @@ export default async function DealHistoryPage() {
     .in('stage', ['won', 'lost', 'ghosted', 'converted'])
     .order('date_won_lost', { ascending: false })
 
-  const won = closedDeals?.filter(d => d.stage === 'won') ?? []
+  // won + converted are treated identically — both represent a closed deal
+  const wonDeals = closedDeals?.filter(d => d.stage === 'won' || d.stage === 'converted') ?? []
   const lost = closedDeals?.filter(d => d.stage === 'lost') ?? []
   const ghosted = closedDeals?.filter(d => d.stage === 'ghosted') ?? []
 
-  const totalRevenue = won.reduce((s, d) => s + (d.deal_value ?? 0), 0)
+  const totalRevenue = wonDeals.reduce((s, d) => s + (d.deal_value ?? 0), 0)
   const winRate = closedDeals?.length
-    ? Math.round((won.length / closedDeals.length) * 100)
+    ? Math.round((wonDeals.length / closedDeals.length) * 100)
     : 0
 
   return (
     <div className="flex-1 flex flex-col bg-[#F8FAFC]">
       <TopBar
         title="Deal History"
-        subtitle={`${won.length} won · ${lost.length} lost · ${ghosted.length} ghosted`}
+        subtitle={`${wonDeals.length} won · ${lost.length} lost · ${ghosted.length} ghosted`}
       />
       <div className="flex-1 p-6 space-y-5 animate-in-page">
 
         {/* Summary KPIs */}
         <div className="grid grid-cols-3 gap-4">
           {[
-            { label: 'Total Revenue Won', value: formatCurrency(totalRevenue), sub: `${won.length} deals`, color: '#059669' },
+            { label: 'Total Revenue Won', value: formatCurrency(totalRevenue), sub: `${wonDeals.length} deals`, color: '#059669' },
             { label: 'Win Rate', value: `${winRate}%`, sub: `${closedDeals?.length ?? 0} total closed`, color: '#1A56DB' },
             { label: 'Lost / Ghosted', value: String(lost.length + ghosted.length), sub: 'closed without revenue', color: '#EF4444' },
           ].map(kpi => (
@@ -107,13 +108,13 @@ export default async function DealHistoryPage() {
                       </td>
                       <td className="px-5 py-3.5">
                         <span className={`inline-flex px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${
-                          d.stage === 'won'
+                          (d.stage === 'won' || d.stage === 'converted')
                             ? 'bg-[#F0FDF4] border-[#BBF7D0] text-[#059669]'
                             : d.stage === 'lost'
                             ? 'bg-red-50 border-red-200 text-[#EF4444]'
                             : 'bg-[#F8FAFC] border-[#E2E8F0] text-[#94A3B8]'
                         }`}>
-                          {d.stage.charAt(0).toUpperCase() + d.stage.slice(1)}
+                          {(d.stage === 'won' || d.stage === 'converted') ? 'Won' : d.stage.charAt(0).toUpperCase() + d.stage.slice(1)}
                         </span>
                       </td>
                       <td className="px-5 py-3.5">
