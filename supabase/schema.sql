@@ -172,7 +172,7 @@ CREATE TABLE deals (
   org_id            uuid NOT NULL REFERENCES organizations(id),
   closer_id         uuid NOT NULL REFERENCES users(id),
   stage             deal_stage NOT NULL DEFAULT 'demo_done',
-  deal_value        numeric CHECK (deal_value IS NULL OR deal_value >= 30000),
+  deal_value        numeric,
   plan_type         text,
   next_follow_up    date,
   follow_up_count   int DEFAULT 0,

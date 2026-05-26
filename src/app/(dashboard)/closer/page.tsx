@@ -49,7 +49,7 @@ export default async function CloserDashboardPage() {
   const weekEnd = sevenDaysLater.toISOString().split('T')[0]
 
   const [wonRes, pipelineRes, todayDemosRes, followupsRes, commRes, upcomingDemosRes] = await Promise.all([
-    supabase.from('deals').select('deal_value').eq('closer_id', profile.id).eq('stage', 'won').gte('date_won_lost', monthStart),
+    supabase.from('deals').select('deal_value').eq('closer_id', profile.id).in('stage', ['won', 'converted']).gte('date_won_lost', monthStart),
     supabase.from('deals').select('id', { count: 'exact', head: true }).eq('closer_id', profile.id)
       .not('stage', 'in', '("won","lost","ghosted","converted")')
       .or('removed_from_board.is.null,removed_from_board.eq.false'),

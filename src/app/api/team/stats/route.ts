@@ -199,12 +199,12 @@ export async function GET(request: Request) {
 
       const { count: demosDone } = await demosDoneQuery
 
-      // 2. Deals Won in period
+      // 2. Deals Won in period (includes 'converted' migrated clients)
       let wonQuery = supabase
         .from('deals')
         .select('id, deal_value, created_at, updated_at')
         .eq('closer_id', closer.id)
-        .eq('stage', 'won')
+        .in('stage', ['won', 'converted'])
 
       if (rangeStart) wonQuery = wonQuery.gte('updated_at', rangeStart)
       if (rangeEnd) wonQuery = wonQuery.lte('updated_at', rangeEnd)

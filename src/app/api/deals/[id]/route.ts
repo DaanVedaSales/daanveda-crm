@@ -47,11 +47,6 @@ export async function PATCH(
   if (poc_phone !== undefined) updatePayload.poc_phone = poc_phone
   if (poc_email !== undefined) updatePayload.poc_email = poc_email
 
-  // Increment follow-up counter if updating follow-up date
-  if (next_follow_up) {
-    updatePayload.follow_up_count = supabase.rpc('increment_follow_up', { deal_id: params.id })
-  }
-
   const { data, error } = await supabase
     .from('deals')
     .update(updatePayload)

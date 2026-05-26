@@ -40,10 +40,12 @@ function parseValue(val: string): { date: string; hour: number; minute: number; 
 
 function buildISOString(date: string, hour: number, minute: number, ampm: 'AM' | 'PM'): string {
   if (!date) return ''
-  let h24 = ampm === 'PM' ? (hour === 12 ? 12 : hour + 12) : (hour === 12 ? 0 : hour)
+  const h24 = ampm === 'PM' ? (hour === 12 ? 12 : hour + 12) : (hour === 12 ? 0 : hour)
   const mm = String(minute).padStart(2, '0')
   const hh = String(h24).padStart(2, '0')
-  return `${date}T${hh}:${mm}`
+  // Construct as local datetime string — JS treats YYYY-MM-DDTHH:mm:ss as local time,
+  // then .toISOString() converts to UTC so Postgres stores the correct moment.
+  return new Date(`${date}T${hh}:${mm}:00`).toISOString()
 }
 
 export default function DateTimePicker({ value, onChange, minDate, placeholder = 'Select date & time', className }: DateTimePickerProps) {

@@ -391,8 +391,14 @@ function DealPanel({ deal, contacts, onClose, onUpdate, onDelete }: {
     if (followUpDate) payload.next_follow_up = followUpDate
     if (lossReason)   payload.loss_reason  = lossReason
     if (billingName)  payload.billing_name = billingName
-    await fetch(`/api/deals/${deal.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-    setSaving(false); onUpdate(); onClose()
+    const res = await fetch(`/api/deals/${deal.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+    setSaving(false)
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}))
+      alert(d.error || 'Failed to save. Please try again.')
+      return
+    }
+    onUpdate(); onClose()
   }
 
   function startEditContact(c: any) {
