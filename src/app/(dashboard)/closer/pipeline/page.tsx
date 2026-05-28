@@ -1316,7 +1316,7 @@ export default function PipelinePage() {
       if (TERMINAL_STAGES.includes(d.stage)) return d.updated_at >= monthStart
       return true
     })
-    setColumns(KANBAN_STAGES.map(stage => ({ stage, deals: visible.filter(d => d.stage === stage) })))
+    setColumns(KANBAN_STAGES.filter(s => s !== 'demo_scheduled').map(stage => ({ stage, deals: visible.filter(d => d.stage === stage) })))
     setLoading(false)
   }
 
@@ -1365,6 +1365,21 @@ export default function PipelinePage() {
     return allDealsRaw.filter(d => TERMINAL_STAGES.includes(d.stage) && d.organization?.name?.toLowerCase().includes(q)).length
   }, [pipelineSearch, allDealsRaw])
 
+  // Groups for pipeline search dropdown
+  const pipelineSearchResults = useMemo(() => {
+    const q = pipelineSearch.trim().toLowerCase()
+    if (!q) return null
+    const activeStages = KANBAN_STAGES.filter(s => s !== 'demo_scheduled' && !TERMINAL_STAGES.includes(s))
+    return {
+      activePipelineDeals: allDealsRaw.filter(d =>
+        activeStages.includes(d.stage) && d.organization?.name?.toLowerCase().includes(q)
+      ).slice(0, 4),
+      upcomingDemos: allDealsRaw.filter(d =>
+        d.stage === 'demo_scheduled' && d.demo != null && d.organization?.name?.toLowerCase().includes(q)
+      ).slice(0, 3),
+    }
+  }, [pipelineSearch, allDealsRaw])
+
   const allDeals   = visibleColumns.flatMap(c => c.deals)
   const totalValue = allDeals.filter(d => !TERMINAL_STAGES.includes(d.stage)).reduce((s, d) => s + (d.deal_value ?? 0), 0)
 
@@ -1395,15 +1410,62 @@ export default function PipelinePage() {
               )}
 
               {/* Search dropdown */}
-              {pipelineSearch.trim() && historySearchMatches > 0 && (
-                <div className="absolute top-full right-0 mt-1 bg-white rounded-xl border border-[#E2E8F0] shadow-lg z-50 min-w-[200px] overflow-hidden">
-                  <button
-                    onMouseDown={e => { e.preventDefault(); router.push('/closer/past') }}
-                    className="w-full text-left px-3 py-2.5 hover:bg-[#F8FAFC] transition-colors"
-                  >
-                    <p className="text-[12px] font-medium text-[#0F172A]">Deal History</p>
-                    <p className="text-[10px] text-[#94A3B8] mt-0.5">{historySearchMatches} match{historySearchMatches !== 1 ? 'es' : ''} · View in Past Deals</p>
-                  </button>
+              {pipelineSearch.trim() && (
+                (pipelineSearchResults?.activePipelineDeals.length ?? 0) > 0 ||
+                (pipelineSearchResults?.upcomingDemos.length ?? 0) > 0 ||
+                historySearchMatches > 0
+              ) && (
+                <div className="absolute top-full right-0 mt-1 bg-white rounded-xl border border-[#E2E8F0] shadow-lg z-50 min-w-[220px] max-h-80 overflow-y-auto overflow-hidden">
+                  {/* Active pipeline deals */}
+                  {(pipelineSearchResults?.activePipelineDeals.length ?? 0) > 0 && (
+                    <div>
+                      <div className="px-3 py-1.5 bg-[#F8FAFC] border-b border-[#E2E8F0]">
+                        <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8]">Pipeline</p>
+                      </div>
+                      {pipelineSearchResults!.activePipelineDeals.map(deal => (
+                        <button
+                          key={deal.id}
+                          onMouseDown={e => { e.preventDefault(); setSelectedDeal(deal); setPipelineSearch('') }}
+                          className="w-full text-left px-3 py-2.5 hover:bg-[#F8FAFC] transition-colors border-b border-[#F1F5F9] last:border-0"
+                        >
+                          <p className="text-[12px] font-medium text-[#0F172A]">{deal.organization?.name}</p>
+                          <p className="text-[10px] text-[#94A3B8] mt-0.5">{DEAL_STAGE_LABELS[deal.stage]} · {deal.organization?.location ?? '—'}</p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Upcoming demos */}
+                  {(pipelineSearchResults?.upcomingDemos.length ?? 0) > 0 && (
+                    <div>
+                      <div className="px-3 py-1.5 bg-[#F8FAFC] border-b border-[#E2E8F0]">
+                        <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8]">Upcoming Demos</p>
+                      </div>
+                      {pipelineSearchResults!.upcomingDemos.map(deal => (
+                        <button
+                          key={deal.id}
+                          onMouseDown={e => { e.preventDefault(); router.push(`/closer/today?open=${deal.demo!.id}`); setPipelineSearch('') }}
+                          className="w-full text-left px-3 py-2.5 hover:bg-[#F8FAFC] transition-colors border-b border-[#F1F5F9] last:border-0"
+                        >
+                          <p className="text-[12px] font-medium text-[#0F172A]">{deal.organization?.name}</p>
+                          <p className="text-[10px] text-[#94A3B8] mt-0.5">
+                            {new Date(deal.demo!.demo_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} · Demo scheduled
+                          </p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Deal history */}
+                  {historySearchMatches > 0 && (
+                    <button
+                      onMouseDown={e => { e.preventDefault(); router.push('/closer/past') }}
+                      className="w-full text-left px-3 py-2.5 hover:bg-[#F8FAFC] transition-colors"
+                    >
+                      <p className="text-[12px] font-medium text-[#0F172A]">Deal History</p>
+                      <p className="text-[10px] text-[#94A3B8] mt-0.5">{historySearchMatches} match{historySearchMatches !== 1 ? 'es' : ''} · View in Past Deals</p>
+                    </button>
+                  )}
                 </div>
               )}
             </div>

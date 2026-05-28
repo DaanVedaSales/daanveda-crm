@@ -5,7 +5,7 @@ import TopBar from '@/components/layout/TopBar'
 import { createClient } from '@/lib/supabase/client'
 import DateTimePicker from '@/components/ui/DateTimePicker'
 import { cn } from '@/lib/utils'
-import { CheckCircle, XCircle, RefreshCw, ChevronDown, ChevronUp, Bell, BellOff, Calendar, ExternalLink, Building2, Users, Banknote, Tag, AlertCircle, Target, Trash2 } from 'lucide-react'
+import { CheckCircle, XCircle, RefreshCw, X, Bell, BellOff, Calendar, ExternalLink, Building2, Users, Banknote, Tag, AlertCircle, Target, Trash2 } from 'lucide-react'
 
 interface DemoWithDetails {
   id: string
@@ -72,9 +72,9 @@ export default function ActionsPage() {
   const [actionState, setActionState] = useState<Record<string, 'attended' | 'no_show' | 'reschedule' | 'delete' | null>>({})
   const [rescheduleDate, setRescheduleDate] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState<string | null>(null)
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [contactsMap, setContactsMap] = useState<Record<string, any[]>>({})
-  const [contactsExpanded, setContactsExpanded] = useState<Record<string, boolean>>({})
+  const [selectedDemo, setSelectedDemo] = useState<DemoWithDetails | null>(null)
+  const [pendingOpenId, setPendingOpenId] = useState<string | null>(null)
 
   const [newSdrId, setNewSdrId] = useState<Record<string, string>>({})
   const [newCloserId, setNewCloserId] = useState<Record<string, string>>({})
@@ -82,6 +82,21 @@ export default function ActionsPage() {
   const [closers, setClosers] = useState<UserOption[]>([])
 
   const supabase = createClient()
+
+  // Read ?open=demoId param to auto-open that demo's panel on navigation from search
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const openId = params.get('open')
+    if (openId) setPendingOpenId(openId)
+  }, [])
+
+  // Auto-open pending demo once demos are loaded
+  useEffect(() => {
+    if (pendingOpenId && allDemos.length > 0) {
+      const match = allDemos.find(d => d.id === pendingOpenId)
+      if (match) { setSelectedDemo(match); setPendingOpenId(null) }
+    }
+  }, [pendingOpenId, allDemos])
 
   useEffect(() => {
     fetchData()
@@ -260,7 +275,6 @@ export default function ActionsPage() {
                 {group.demos.map(demo => {
                   const action = actionState[demo.id]
                   const isSaving = saving === demo.id
-                  const isExpanded = expanded[demo.id]
                   const reminderSent = demo.reminder_sent === true
 
                   return (
@@ -307,9 +321,9 @@ export default function ActionsPage() {
                           </div>
                         </div>
 
-                        {/* ── Expand toggle ── */}
+                        {/* ── View details button → opens right-side panel ── */}
                         <button
-                          onClick={() => setExpanded(p => ({ ...p, [demo.id]: !p[demo.id] }))}
+                          onClick={() => setSelectedDemo(demo)}
                           className="w-full flex items-center justify-between px-3.5 py-2.5 bg-[#F8FAFC] rounded-xl border border-[#F1F5F9] text-left hover:bg-[#F1F5F9] transition-colors"
                         >
                           <div className="flex items-center gap-2">
@@ -318,148 +332,8 @@ export default function ActionsPage() {
                               Org details & SDR intel{demo.sdr?.name ? ` · ${demo.sdr.name}` : ''}
                             </p>
                           </div>
-                          <ChevronDown className={cn('w-3.5 h-3.5 text-[#94A3B8] transition-transform', isExpanded && 'rotate-180')} />
+                          <ExternalLink className="w-3 h-3 text-[#94A3B8]" strokeWidth={1.75} />
                         </button>
-
-                        {/* ── Expanded section ── */}
-                        {isExpanded && (
-                          <div className="space-y-3 px-0.5">
-
-                            {/* Org overview */}
-                            <div className="p-3.5 bg-[#F8FAFC] rounded-xl border border-[#F1F5F9] space-y-2.5">
-                              <p className="text-label text-[#94A3B8] flex items-center gap-1.5">
-                                <Building2 className="w-3 h-3" strokeWidth={2} /> Org Overview
-                              </p>
-
-                              {demo.organization.thematic_areas && demo.organization.thematic_areas.length > 0 && (
-                                <div className="flex flex-wrap gap-1.5">
-                                  {demo.organization.thematic_areas.map((t: string, i: number) => (
-                                    <span key={i} className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 bg-[#EFF6FF] text-[#1A56DB] border border-[#BFDBFE] rounded-full">
-                                      <Tag className="w-2.5 h-2.5" strokeWidth={2} />{t}
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
-
-                              <div className="flex flex-wrap gap-4">
-                                {demo.organization.team_size && (
-                                  <div className="flex items-center gap-1.5 text-[12px] text-[#374151]">
-                                    <Users className="w-3 h-3 text-[#94A3B8]" strokeWidth={2} />
-                                    <span>{demo.organization.team_size} people</span>
-                                  </div>
-                                )}
-                                {demo.organization.annual_revenue && (
-                                  <div className="flex items-center gap-1.5 text-[12px] text-[#374151]">
-                                    <Banknote className="w-3 h-3 text-[#94A3B8]" strokeWidth={2} />
-                                    <span>₹{(demo.organization.annual_revenue / 100000).toFixed(0)}L revenue</span>
-                                  </div>
-                                )}
-                              </div>
-
-                              {(demo.organization.linkedin_url || demo.organization.url) && (
-                                <div className="flex gap-2">
-                                  {demo.organization.linkedin_url && (
-                                    <a href={demo.organization.linkedin_url} target="_blank" rel="noreferrer"
-                                      className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 bg-[#EFF6FF] text-[#1A56DB] border border-[#BFDBFE] rounded-lg hover:bg-[#DBEAFE] transition-colors">
-                                      <ExternalLink className="w-2.5 h-2.5" strokeWidth={2.5} /> LinkedIn
-                                    </a>
-                                  )}
-                                  {demo.organization.url && (
-                                    <a href={demo.organization.url} target="_blank" rel="noreferrer"
-                                      className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 bg-[#F8FAFC] text-[#374151] border border-[#E2E8F0] rounded-lg hover:bg-[#F1F5F9] transition-colors">
-                                      <ExternalLink className="w-2.5 h-2.5" strokeWidth={2.5} /> Website
-                                    </a>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-
-                            {/* Key Decision Makers */}
-                            {contactsMap[demo.id] && contactsMap[demo.id].length > 0 && (
-                              <div className="rounded-xl border border-[#E2E8F0] overflow-hidden">
-                                <button
-                                  onClick={() => setContactsExpanded(p => ({ ...p, [demo.id]: !p[demo.id] }))}
-                                  className="w-full flex items-center justify-between px-3.5 py-2.5 bg-[#F8FAFC] hover:bg-[#F1F5F9] transition-colors text-left"
-                                >
-                                  <div className="flex items-center gap-2">
-                                    <p className="text-[12px] font-medium text-[#64748B]">
-                                      Key Decision Makers · {contactsMap[demo.id].length}
-                                    </p>
-                                  </div>
-                                  {contactsExpanded[demo.id]
-                                    ? <ChevronUp className="w-3.5 h-3.5 text-[#94A3B8]" strokeWidth={1.75} />
-                                    : <ChevronDown className="w-3.5 h-3.5 text-[#94A3B8]" strokeWidth={1.75} />
-                                  }
-                                </button>
-                                {contactsExpanded[demo.id] && (
-                                  <div className="p-3 space-y-2 bg-white">
-                                    {contactsMap[demo.id].map((c: any) => (
-                                      <div key={c.id} className="bg-[#F8FAFC] rounded-lg p-2.5 border border-[#F1F5F9]">
-                                        <div className="flex items-center gap-2 mb-0.5">
-                                          <p className="text-[13px] font-medium text-[#0F172A]">{c.name}</p>
-                                          {c.is_primary && (
-                                            <span className="text-[9px] font-semibold bg-[#1A56DB] text-white px-1.5 py-0.5 rounded-full">Primary</span>
-                                          )}
-                                        </div>
-                                        {c.designation && <p className="text-[11px] text-[#64748B]">{c.designation}</p>}
-                                        <div className="flex gap-3 mt-1 text-[11px] text-[#94A3B8]">
-                                          {c.phone && <span>{c.phone}</span>}
-                                          {c.email && <span>{c.email}</span>}
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            )}
-
-                            {/* SDR Intel */}
-                            {(demo.pain_point || demo.demo_expectation || demo.sdr_summary) && (
-                              <div className="p-3.5 bg-[#FFFBEB] rounded-xl border border-[#FDE68A] space-y-2.5">
-                                <p className="text-label text-[#92400E] flex items-center gap-1.5">
-                                  SDR Intel{demo.sdr?.name ? ` · ${demo.sdr.name}` : ''}
-                                  {demo.sdr_interest_signal && (
-                                    <span className={cn(
-                                      'ml-auto text-[10px] font-semibold px-2 py-0.5 rounded-full',
-                                      demo.sdr_interest_signal === 'hot' ? 'bg-red-100 text-red-700' :
-                                      demo.sdr_interest_signal === 'warm' ? 'bg-amber-100 text-amber-700' :
-                                      'bg-slate-100 text-slate-600'
-                                    )}>
-                                      {demo.sdr_interest_signal.toUpperCase()}
-                                    </span>
-                                  )}
-                                </p>
-
-                                {demo.pain_point && (
-                                  <div>
-                                    <div className="flex items-center gap-1.5 mb-1">
-                                      <AlertCircle className="w-3 h-3 text-[#D97706]" strokeWidth={2} />
-                                      <p className="text-[10px] font-semibold uppercase tracking-widest text-[#D97706]">Main Pain Point</p>
-                                    </div>
-                                    <p className="text-[12px] text-[#374151] leading-relaxed pl-4">{demo.pain_point}</p>
-                                  </div>
-                                )}
-
-                                {demo.demo_expectation && (
-                                  <div>
-                                    <div className="flex items-center gap-1.5 mb-1">
-                                      <Target className="w-3 h-3 text-[#D97706]" strokeWidth={2} />
-                                      <p className="text-[10px] font-semibold uppercase tracking-widest text-[#D97706]">Expecting from Demo</p>
-                                    </div>
-                                    <p className="text-[12px] text-[#374151] leading-relaxed pl-4">{demo.demo_expectation}</p>
-                                  </div>
-                                )}
-
-                                {demo.sdr_summary && (
-                                  <div>
-                                    <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8] mb-1">Additional Notes</p>
-                                    <p className="text-[12px] text-[#64748B] leading-relaxed">{demo.sdr_summary}</p>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        )}
                       </div>
 
                       {/* ── Action zone ── */}
@@ -623,6 +497,173 @@ export default function ActionsPage() {
               </div>
             </div>
           ))}
+        </div>
+      </div>
+
+      {/* Demo detail panel */}
+      {selectedDemo && (
+        <DemoInfoPanel
+          demo={selectedDemo}
+          contacts={contactsMap[selectedDemo.id] ?? []}
+          onClose={() => setSelectedDemo(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── Demo Info Panel ────────────────────────────────────────────────────────────
+function DemoInfoPanel({
+  demo,
+  contacts,
+  onClose,
+}: {
+  demo: DemoWithDetails
+  contacts: any[]
+  onClose: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end">
+      <div className="absolute inset-0 bg-[#0F172A]/40 backdrop-blur-[2px]" onClick={onClose} />
+      <div className="relative w-full max-w-[380px] bg-white h-full shadow-panel flex flex-col animate-slide-in-right">
+        {/* Header */}
+        <div className="px-5 py-4 border-b border-[#F1F5F9] flex items-start justify-between">
+          <div className="flex-1 min-w-0 pr-3">
+            <p className="font-semibold text-[15px] text-[#0F172A] tracking-tight truncate">{demo.organization?.name}</p>
+            {demo.organization?.location && (
+              <p className="text-[11px] text-[#94A3B8] mt-0.5">{demo.organization.location}</p>
+            )}
+            <p className="text-[12px] font-semibold text-[#1A56DB] mt-1.5">
+              {new Date(demo.demo_date).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}
+              {' · '}{formatTime(demo.demo_date)}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 rounded-lg hover:bg-[#F1F5F9] text-[#94A3B8] hover:text-[#374151] transition-colors"
+          >
+            <X className="w-4 h-4" strokeWidth={1.75} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          {/* Org Overview */}
+          <div className="p-3.5 bg-[#F8FAFC] rounded-xl border border-[#F1F5F9] space-y-2.5">
+            <p className="text-label text-[#94A3B8] flex items-center gap-1.5">
+              <Building2 className="w-3 h-3" strokeWidth={2} /> Org Overview
+            </p>
+            {demo.organization.thematic_areas && demo.organization.thematic_areas.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {demo.organization.thematic_areas.map((t: string, i: number) => (
+                  <span key={i} className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 bg-[#EFF6FF] text-[#1A56DB] border border-[#BFDBFE] rounded-full">
+                    <Tag className="w-2.5 h-2.5" strokeWidth={2} />{t}
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="flex flex-wrap gap-4">
+              {demo.organization.team_size && (
+                <div className="flex items-center gap-1.5 text-[12px] text-[#374151]">
+                  <Users className="w-3 h-3 text-[#94A3B8]" strokeWidth={2} />
+                  <span>{demo.organization.team_size} people</span>
+                </div>
+              )}
+              {demo.organization.annual_revenue && (
+                <div className="flex items-center gap-1.5 text-[12px] text-[#374151]">
+                  <Banknote className="w-3 h-3 text-[#94A3B8]" strokeWidth={2} />
+                  <span>₹{(demo.organization.annual_revenue / 100000).toFixed(0)}L revenue</span>
+                </div>
+              )}
+            </div>
+            {(demo.organization.linkedin_url || demo.organization.url) && (
+              <div className="flex gap-2">
+                {demo.organization.linkedin_url && (
+                  <a href={demo.organization.linkedin_url} target="_blank" rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 bg-[#EFF6FF] text-[#1A56DB] border border-[#BFDBFE] rounded-lg hover:bg-[#DBEAFE] transition-colors">
+                    <ExternalLink className="w-2.5 h-2.5" strokeWidth={2.5} /> LinkedIn
+                  </a>
+                )}
+                {demo.organization.url && (
+                  <a href={demo.organization.url} target="_blank" rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 bg-[#F8FAFC] text-[#374151] border border-[#E2E8F0] rounded-lg hover:bg-[#F1F5F9] transition-colors">
+                    <ExternalLink className="w-2.5 h-2.5" strokeWidth={2.5} /> Website
+                  </a>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Key Decision Makers */}
+          {contacts.length > 0 && (
+            <div className="rounded-xl border border-[#E2E8F0] overflow-hidden">
+              <div className="px-4 py-3 bg-[#F8FAFC] border-b border-[#E2E8F0]">
+                <p className="text-label text-[#94A3B8]">Key Decision Makers · {contacts.length}</p>
+              </div>
+              <div className="p-3 space-y-2 bg-white">
+                {contacts.map((c: any) => (
+                  <div key={c.id} className="bg-[#F8FAFC] rounded-lg p-2.5 border border-[#F1F5F9]">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <p className="text-[13px] font-medium text-[#0F172A]">{c.name}</p>
+                      {c.is_primary && (
+                        <span className="text-[9px] font-semibold bg-[#1A56DB] text-white px-1.5 py-0.5 rounded-full">Primary</span>
+                      )}
+                    </div>
+                    {c.designation && <p className="text-[11px] text-[#64748B]">{c.designation}</p>}
+                    <div className="flex flex-wrap gap-3 mt-1 text-[11px] text-[#94A3B8]">
+                      {c.phone && <span>{c.phone}</span>}
+                      {c.email && <span>{c.email}</span>}
+                      {c.linkedin_url && (
+                        <a href={c.linkedin_url} target="_blank" rel="noreferrer" className="text-[#1A56DB] hover:underline">LinkedIn</a>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* SDR Intel */}
+          {(demo.pain_point || demo.demo_expectation || demo.sdr_summary) && (
+            <div className="p-3.5 bg-[#FFFBEB] rounded-xl border border-[#FDE68A] space-y-2.5">
+              <p className="text-label text-[#92400E] flex items-center gap-1.5">
+                SDR Intel{demo.sdr?.name ? ` · ${demo.sdr.name}` : ''}
+                {demo.sdr_interest_signal && (
+                  <span className={cn(
+                    'ml-auto text-[10px] font-semibold px-2 py-0.5 rounded-full',
+                    demo.sdr_interest_signal === 'hot' ? 'bg-red-100 text-red-700' :
+                    demo.sdr_interest_signal === 'warm' ? 'bg-amber-100 text-amber-700' :
+                    'bg-slate-100 text-slate-600'
+                  )}>
+                    {demo.sdr_interest_signal.toUpperCase()}
+                  </span>
+                )}
+              </p>
+              {demo.pain_point && (
+                <div>
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <AlertCircle className="w-3 h-3 text-[#D97706]" strokeWidth={2} />
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-[#D97706]">Main Pain Point</p>
+                  </div>
+                  <p className="text-[12px] text-[#374151] leading-relaxed pl-4">{demo.pain_point}</p>
+                </div>
+              )}
+              {demo.demo_expectation && (
+                <div>
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <Target className="w-3 h-3 text-[#D97706]" strokeWidth={2} />
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-[#D97706]">Expecting from Demo</p>
+                  </div>
+                  <p className="text-[12px] text-[#374151] leading-relaxed pl-4">{demo.demo_expectation}</p>
+                </div>
+              )}
+              {demo.sdr_summary && (
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8] mb-1">Additional Notes</p>
+                  <p className="text-[12px] text-[#64748B] leading-relaxed">{demo.sdr_summary}</p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>

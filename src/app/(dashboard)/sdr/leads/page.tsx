@@ -197,7 +197,7 @@ export default function SDRLeadsPage() {
                         {searchDropdown.followup.map(lead => (
                           <button
                             key={lead.id}
-                            onMouseDown={e => { e.preventDefault(); router.push('/sdr/followups') }}
+                            onMouseDown={e => { e.preventDefault(); router.push(`/sdr/followups?open=${lead.id}`) }}
                             className="w-full text-left px-3 py-2.5 hover:bg-[#F8FAFC] transition-colors border-b border-[#F1F5F9] last:border-0"
                           >
                             <p className="text-[13px] font-medium text-[#0F172A]">{lead.organization?.name}</p>
@@ -957,6 +957,9 @@ function LeadDetailPanel({
                 <div className="flex gap-3 mt-1.5 text-xs text-[#94A3B8]">
                   {c.phone && <span>{c.phone}</span>}
                   {c.email && <span>{c.email}</span>}
+                  {c.linkedin_url && (
+                    <a href={c.linkedin_url} target="_blank" rel="noreferrer" className="text-[#1A56DB] hover:underline">LinkedIn</a>
+                  )}
                 </div>
               </div>
             ))}

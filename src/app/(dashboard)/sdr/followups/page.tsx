@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import TopBar from '@/components/layout/TopBar'
 import { createClient } from '@/lib/supabase/client'
 import { LEAD_STATUS_LABELS, LEAD_STATUS_COLORS } from '@/lib/constants'
@@ -231,9 +231,17 @@ function RowSkeleton() {
 export default function FollowupsPage() {
   const [leads, setLeads] = useState<FollowupLead[]>([])
   const [loading, setLoading] = useState(true)
+  const [autoOpenLeadId, setAutoOpenLeadId] = useState<string | null>(null)
   const supabase = createClient()
 
   useEffect(() => { fetchLeads() }, [])
+
+  // Read ?open=leadId param to auto-expand that lead on navigation from search
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const openId = params.get('open')
+    if (openId) setAutoOpenLeadId(openId)
+  }, [])
 
   async function fetchLeads() {
     const { data: user } = await supabase.auth.getUser()
@@ -303,9 +311,20 @@ export default function FollowupsPage() {
     const [deleting, setDeleting] = useState(false)
     const [showBookDemo, setShowBookDemo] = useState(false)
     const [contacts, setContacts] = useState<any[]>([])
+    const rowRef = useRef<HTMLDivElement>(null)
     const since = daysSince(lead.updated_at)
     const isOverdue = lead.callback_date ? lead.callback_date < today : false
     const isToday = lead.callback_date === today
+
+    // Auto-expand and scroll when navigated from search with ?open=leadId
+    useEffect(() => {
+      if (autoOpenLeadId === lead.id) {
+        setExpanded(true)
+        setTimeout(() => {
+          rowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        }, 150)
+      }
+    }, [autoOpenLeadId])
 
     async function handleDelete(e: React.MouseEvent) {
       e.stopPropagation()
@@ -319,7 +338,7 @@ export default function FollowupsPage() {
     }
 
     return (
-      <div className="border-b border-[#F1F5F9] last:border-0">
+      <div ref={rowRef} className="border-b border-[#F1F5F9] last:border-0">
         <div
           className="flex items-center justify-between px-5 py-3.5 hover:bg-[#F8FAFC] transition-colors cursor-pointer"
           onClick={() => setExpanded(prev => !prev)}
