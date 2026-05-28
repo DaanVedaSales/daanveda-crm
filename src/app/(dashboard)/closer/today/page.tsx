@@ -11,6 +11,7 @@ interface DemoWithDetails {
   id: string
   demo_date: string
   status: string
+  org_id: string | null
   pain_point: string | null
   demo_expectation: string | null
   sdr_summary: string | null
@@ -112,7 +113,7 @@ export default function ActionsPage() {
     const { data } = await supabase
       .from('demos')
       .select(`
-        id, demo_date, status, pain_point, demo_expectation, sdr_summary, sdr_interest_signal, post_demo_notes, reminder_sent,
+        id, demo_date, status, org_id, pain_point, demo_expectation, sdr_summary, sdr_interest_signal, post_demo_notes, reminder_sent,
         organization:organizations(name, location, annual_revenue, team_size, thematic_areas, linkedin_url, url),
         sdr:users!demos_sdr_id_fkey(id, name),
         lead:leads(id, org_id)
@@ -127,14 +128,15 @@ export default function ActionsPage() {
     setAllDemos(fetchedDemos)
 
     // Fetch contacts for each demo's org
+    // Use demo.org_id directly (always present on demos table) to avoid RLS issues with the leads join
     const newContactsMap: Record<string, any[]> = {}
     await Promise.all(
       fetchedDemos.map(async (demo) => {
-        if (!demo.lead?.org_id) return
+        if (!demo.org_id) return
         const { data: contacts } = await supabase
           .from('contacts')
           .select('*')
-          .eq('org_id', demo.lead.org_id)
+          .eq('org_id', demo.org_id)
           .order('is_primary', { ascending: false })
         newContactsMap[demo.id] = contacts ?? []
       })
