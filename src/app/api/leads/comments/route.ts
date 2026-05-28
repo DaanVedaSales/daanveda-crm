@@ -20,17 +20,24 @@ export async function GET(req: NextRequest) {
     .single()
   if (!profile) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { data, error } = await supabase
+  // Optional source filter: 'lead' (My Leads notes) | 'followup' (Follow-up notes) | null (all)
+  const source = searchParams.get('source')
+
+  let commentQuery = supabase
     .from('lead_comments')
     .select(`
       id,
       comment,
+      source,
       created_at,
       user:users!lead_comments_user_id_fkey(id, name)
     `)
     .eq('lead_id', leadId)
     .order('created_at', { ascending: false })
 
+  if (source) commentQuery = commentQuery.eq('source', source)
+
+  const { data, error } = await commentQuery
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data ?? [])
 }
@@ -53,10 +60,13 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json()
-  const { lead_id, comment } = body
+  const { lead_id, comment, source: bodySource } = body
 
   if (!lead_id) return NextResponse.json({ error: 'lead_id required' }, { status: 400 })
   if (!comment?.trim()) return NextResponse.json({ error: 'comment cannot be empty' }, { status: 400 })
+
+  // Validate source; default to 'lead'
+  const source = ['lead', 'followup'].includes(bodySource) ? bodySource : 'lead'
 
   // SDR guard: can only comment on their own assigned leads
   if (profile.role === 'sdr') {
@@ -77,10 +87,12 @@ export async function POST(req: NextRequest) {
       lead_id,
       user_id: profile.id,
       comment: comment.trim(),
+      source,
     })
     .select(`
       id,
       comment,
+      source,
       created_at,
       user:users!lead_comments_user_id_fkey(id, name)
     `)

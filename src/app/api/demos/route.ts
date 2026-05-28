@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceClient } from '@/lib/supabase/server'
 
 // POST /api/demos — book demo + handoff (SDR only)
 // closer_id is optional — if provided, assigns that closer; otherwise round-robin
@@ -138,7 +138,11 @@ export async function POST(req: NextRequest) {
   if (dealError) return NextResponse.json({ error: dealError.message }, { status: 500 })
 
   // 3. Update lead: handoff to closer workspace
-  await supabase
+  // Must use service client — SDR's RLS policy (sdr_update_leads) only covers
+  // phase='sdr' leads; this update changes phase to 'closer' and reassigns,
+  // so it needs the service role to bypass RLS.
+  const serviceSupabase = createServiceClient()
+  const { error: leadHandoffError } = await serviceSupabase
     .from('leads')
     .update({
       status: 'demo_booked',
@@ -147,6 +151,8 @@ export async function POST(req: NextRequest) {
       updated_at: new Date().toISOString(),
     })
     .eq('id', lead_id)
+
+  if (leadHandoffError) return NextResponse.json({ error: leadHandoffError.message }, { status: 500 })
 
   // 4. Log activity
   await supabase.from('activities').insert({

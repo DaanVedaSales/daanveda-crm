@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import TopBar from '@/components/layout/TopBar'
 import { createClient } from '@/lib/supabase/client'
 import { KANBAN_STAGES, DEAL_STAGE_LABELS, DEAL_STAGE_COLORS } from '@/lib/constants'
@@ -1269,15 +1270,18 @@ function AddDealModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
 // ── Main Pipeline Page ─────────────────────────────────────────────────────────
 export default function PipelinePage() {
   const [columns,      setColumns]     = useState<Column[]>([])
+  const [allDealsRaw,  setAllDealsRaw] = useState<DealWithDetails[]>([])
   const [loading,      setLoading]     = useState(true)
   const [draggingId,   setDraggingId]  = useState<string | null>(null)
   const [selectedDeal, setSelectedDeal] = useState<DealWithDetails | null>(null)
   const [dealContacts, setDealContacts] = useState<any[]>([])
   const [showAddDeal,   setShowAddDeal]   = useState(false)
   const [showOrgSearch, setShowOrgSearch] = useState(false)
+  const [pipelineSearch, setPipelineSearch] = useState('')
   // Terminal stages collapsed by default
   const [collapsedStages, setCollapsedStages] = useState<Set<DealStage>>(new Set(TERMINAL_STAGES))
   const supabase = createClient()
+  const router = useRouter()
 
   useEffect(() => { fetchPipeline() }, [])
 
@@ -1299,14 +1303,19 @@ export default function PipelinePage() {
     if (!profile) return
     const res  = await fetch(`/api/deals?closer_id=${profile.id}`)
     const deals: DealWithDetails[] = await res.json()
+    const dealsArr = Array.isArray(deals) ? deals : []
+
+    // Store raw deals (excluding removed) for workspace-wide search across all months
+    const notRemoved = dealsArr.filter(d => !d.removed_from_board)
+    setAllDealsRaw(notRemoved)
+
     // Terminal stages only show current month's deals — prior months auto-clear to deal history
     const now = new Date()
     const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
-    const visible = Array.isArray(deals) ? deals.filter(d => {
-      if (d.removed_from_board) return false
+    const visible = notRemoved.filter(d => {
       if (TERMINAL_STAGES.includes(d.stage)) return d.updated_at >= monthStart
       return true
-    }) : []
+    })
     setColumns(KANBAN_STAGES.map(stage => ({ stage, deals: visible.filter(d => d.stage === stage) })))
     setLoading(false)
   }
@@ -1321,7 +1330,7 @@ export default function PipelinePage() {
 
   async function handleDrop(targetStage: DealStage) {
     if (!draggingId) return
-    const allDeals = columns.flatMap(c => c.deals)
+    const allDeals = visibleColumns.flatMap(c => c.deals)
     const deal = allDeals.find(d => d.id === draggingId)
     if (!deal || deal.stage === targetStage) { setDraggingId(null); return }
 
@@ -1339,16 +1348,65 @@ export default function PipelinePage() {
     setDraggingId(null); fetchPipeline()
   }
 
-  const allDeals   = columns.flatMap(c => c.deals)
+  // When pipeline search is active, search across ALL deals (incl. past months) for completeness
+  const visibleColumns = useMemo(() => {
+    const q = pipelineSearch.trim().toLowerCase()
+    if (!q) return columns
+    return columns.map(col => ({
+      ...col,
+      deals: col.deals.filter(d => d.organization?.name?.toLowerCase().includes(q)),
+    }))
+  }, [pipelineSearch, columns])
+
+  // Pipeline search also checks deal history (terminal stage deals from all months)
+  const historySearchMatches = useMemo(() => {
+    const q = pipelineSearch.trim().toLowerCase()
+    if (!q) return 0
+    return allDealsRaw.filter(d => TERMINAL_STAGES.includes(d.stage) && d.organization?.name?.toLowerCase().includes(q)).length
+  }, [pipelineSearch, allDealsRaw])
+
+  const allDeals   = visibleColumns.flatMap(c => c.deals)
   const totalValue = allDeals.filter(d => !TERMINAL_STAGES.includes(d.stage)).reduce((s, d) => s + (d.deal_value ?? 0), 0)
 
   return (
     <div className="flex-1 min-h-0 flex flex-col bg-[#F8FAFC]">
       <TopBar
         title="Pipeline"
-        subtitle={loading ? 'Loading…' : `${allDeals.length} deals · ${formatCurrency(totalValue)} in play`}
+        subtitle={loading ? 'Loading…' : pipelineSearch.trim() ? `Filtering by "${pipelineSearch.trim()}"` : `${allDeals.length} deals · ${formatCurrency(totalValue)} in play`}
         actions={
           <>
+            {/* Workspace search */}
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#94A3B8]" strokeWidth={2} />
+              <input
+                value={pipelineSearch}
+                onChange={e => setPipelineSearch(e.target.value)}
+                placeholder="Search pipeline..."
+                className="pl-8 pr-3 py-2 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20 focus:border-[#1A56DB] w-44"
+              />
+              {pipelineSearch && (
+                <button
+                  onClick={() => setPipelineSearch('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-[#94A3B8] hover:text-[#374151] transition-colors"
+                  title="Clear search"
+                >
+                  <X className="w-3.5 h-3.5" strokeWidth={2} />
+                </button>
+              )}
+
+              {/* Search dropdown */}
+              {pipelineSearch.trim() && historySearchMatches > 0 && (
+                <div className="absolute top-full right-0 mt-1 bg-white rounded-xl border border-[#E2E8F0] shadow-lg z-50 min-w-[200px] overflow-hidden">
+                  <button
+                    onMouseDown={e => { e.preventDefault(); router.push('/closer/past') }}
+                    className="w-full text-left px-3 py-2.5 hover:bg-[#F8FAFC] transition-colors"
+                  >
+                    <p className="text-[12px] font-medium text-[#0F172A]">Deal History</p>
+                    <p className="text-[10px] text-[#94A3B8] mt-0.5">{historySearchMatches} match{historySearchMatches !== 1 ? 'es' : ''} · View in Past Deals</p>
+                  </button>
+                </div>
+              )}
+            </div>
             <button
               onClick={() => setShowOrgSearch(true)}
               className="flex items-center gap-1.5 py-2 px-3.5 text-xs font-semibold text-[#374151] border border-[#E2E8F0] rounded-lg hover:bg-[#F1F5F9] transition-colors"
@@ -1380,7 +1438,7 @@ export default function PipelinePage() {
           className="flex-1 flex gap-3 p-4 overflow-x-auto scrollbar-thin"
           onDragEnd={() => setDraggingId(null)}
         >
-          {columns.map(col => (
+          {visibleColumns.map(col => (
             <KanbanColumn
               key={col.stage}
               stage={col.stage}

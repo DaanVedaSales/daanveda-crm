@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { LEAD_STATUS_LABELS, LEAD_STATUS_COLORS } from '@/lib/constants'
 import type { LeadStatus } from '@/types/database'
 import { cn } from '@/lib/utils'
-import { CheckCircle, ChevronDown, ChevronUp, Trash2 } from 'lucide-react'
+import { CheckCircle, ChevronDown, ChevronUp, Trash2, Send, MessageSquare } from 'lucide-react'
 import DateTimePicker from '@/components/ui/DateTimePicker'
 
 interface FollowupLead {
@@ -37,6 +37,10 @@ function LeadExpandedDetail({
   const [rescheduleDate, setRescheduleDate] = useState(currentCallbackDate?.split('T')[0] ?? '')
   const [rescheduling, setRescheduling] = useState(false)
   const [rescheduled, setRescheduled] = useState(false)
+  // Follow-up specific comments
+  const [comments, setComments] = useState<any[]>([])
+  const [commentText, setCommentText] = useState('')
+  const [postingComment, setPostingComment] = useState(false)
 
   useEffect(() => {
     fetch(`/api/leads/${leadId}`)
@@ -46,7 +50,27 @@ function LeadExpandedDetail({
         setData({ contacts, activities: d.activities ?? [] })
         onContactsLoaded(contacts)
       })
+    // Load follow-up comments (source=followup only)
+    fetch(`/api/leads/comments?lead_id=${leadId}&source=followup`)
+      .then(r => r.json())
+      .then(d => setComments(Array.isArray(d) ? d : []))
   }, [leadId])
+
+  async function postFollowupComment() {
+    if (!commentText.trim()) return
+    setPostingComment(true)
+    const res = await fetch('/api/leads/comments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lead_id: leadId, comment: commentText.trim(), source: 'followup' }),
+    })
+    if (res.ok) {
+      const newComment = await res.json()
+      setComments(prev => [newComment, ...prev])
+      setCommentText('')
+    }
+    setPostingComment(false)
+  }
 
   async function handleReschedule() {
     if (!rescheduleDate) return
@@ -123,6 +147,49 @@ function LeadExpandedDetail({
             {rescheduling ? '…' : rescheduled ? 'Saved' : 'Update'}
           </button>
         </div>
+      </div>
+
+      {/* Follow-up Notes */}
+      <div>
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8] mb-1.5 flex items-center gap-1.5">
+          <MessageSquare className="w-3 h-3" strokeWidth={2} /> Follow-up Notes
+        </p>
+
+        {/* Post new note */}
+        <div className="flex gap-2 items-start mb-2">
+          <textarea
+            value={commentText}
+            onChange={e => setCommentText(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) postFollowupComment() }}
+            placeholder="What was discussed in this follow-up? (⌘Enter to save)"
+            rows={2}
+            className="flex-1 px-3 py-2 text-xs border border-[#E2E8F0] rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20 focus:border-[#1A56DB]"
+          />
+          <button
+            onClick={postFollowupComment}
+            disabled={postingComment || !commentText.trim()}
+            className="p-2 bg-[#1A56DB] text-white rounded-lg hover:bg-[#1A4FBF] disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"
+            title="Save note"
+          >
+            <Send className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        {/* Notes list — latest on top */}
+        {comments.length === 0 ? (
+          <p className="text-[11px] text-[#94A3B8] text-center py-2">No follow-up notes yet.</p>
+        ) : (
+          <div className="space-y-1.5 max-h-36 overflow-y-auto">
+            {comments.map((c: any) => (
+              <div key={c.id} className="bg-[#F8FAFC] rounded-lg p-2.5 border border-[#F1F5F9]">
+                <p className="text-[11px] text-[#0F172A] leading-relaxed">{c.comment}</p>
+                <p className="text-[10px] text-[#94A3B8] mt-1">
+                  {c.user?.name ?? 'You'} · {new Date(c.created_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true })}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Book Demo button */}

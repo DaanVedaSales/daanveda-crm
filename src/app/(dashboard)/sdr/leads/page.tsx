@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import TopBar from '@/components/layout/TopBar'
 import { createClient } from '@/lib/supabase/client'
 import { LEAD_STATUS_LABELS, LEAD_STATUS_COLORS, INTEREST_SIGNAL_LABELS, INTEREST_SIGNAL_COLORS } from '@/lib/constants'
@@ -20,6 +21,7 @@ interface LeadWithOrg extends Lead {
 export default function SDRLeadsPage() {
   const [leads, setLeads] = useState<LeadWithOrg[]>([])
   const [filtered, setFiltered] = useState<LeadWithOrg[]>([])
+  const [allSDRLeads, setAllSDRLeads] = useState<LeadWithOrg[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [selectedLead, setSelectedLead] = useState<LeadWithOrg | null>(null)
@@ -29,6 +31,7 @@ export default function SDRLeadsPage() {
   const [deletingLeadId, setDeletingLeadId] = useState<string | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const supabase = createClient()
+  const router = useRouter()
 
   async function deleteLead(leadId: string) {
     setDeletingLeadId(leadId)
@@ -36,6 +39,7 @@ export default function SDRLeadsPage() {
     if (res.ok) {
       setLeads(prev => prev.filter(l => l.id !== leadId))
       setFiltered(prev => prev.filter(l => l.id !== leadId))
+      setAllSDRLeads(prev => prev.filter(l => l.id !== leadId))
       if (selectedLead?.id === leadId) { setShowPanel(false); setSelectedLead(null) }
     }
     setDeletingLeadId(null)
@@ -64,35 +68,57 @@ export default function SDRLeadsPage() {
 
     const res = await fetch(`/api/leads?assigned_to=${profile.id}`)
     const data: LeadWithOrg[] = await res.json()
-    // Only show active working leads — demo_booked/call_again/not_reachable go to other views
-    const active = (data ?? []).filter(l => !EXCLUDE_FROM_ASSIGNED.has(l.status))
+    const fullData = data ?? []
 
-    // Fetch primary contacts for KDM name/phone search
-    const orgIds = active.map(l => l.org_id).filter(Boolean)
-    if (orgIds.length > 0) {
+    // Fetch primary contacts for ALL leads (active + follow-up + demos) for cross-section search
+    const allOrgIds = fullData.map(l => l.org_id).filter(Boolean)
+    let contactMap: Record<string, { name: string | null; phone: string | null }> = {}
+    if (allOrgIds.length > 0) {
       const { data: contactData } = await supabase
         .from('contacts')
         .select('org_id, name, phone')
-        .in('org_id', orgIds)
+        .in('org_id', allOrgIds)
         .eq('is_primary', true)
 
-      const contactMap: Record<string, { name: string | null; phone: string | null }> = {}
       ;(contactData ?? []).forEach((c: any) => {
         if (!contactMap[c.org_id]) contactMap[c.org_id] = { name: c.name, phone: c.phone }
       })
-
-      const withContacts = active.map(l => ({
-        ...l,
-        primaryContact: contactMap[l.org_id] ?? null,
-      }))
-      setLeads(withContacts)
-      setFiltered(withContacts)
-    } else {
-      setLeads(active)
-      setFiltered(active)
     }
+
+    // All leads with contacts merged in (for workspace-wide search)
+    const allWithContacts = fullData.map(l => ({
+      ...l,
+      primaryContact: contactMap[l.org_id] ?? null,
+    }))
+    setAllSDRLeads(allWithContacts)
+
+    // Only show active working leads in the My Leads list
+    const active = allWithContacts.filter(l => !EXCLUDE_FROM_ASSIGNED.has(l.status))
+    setLeads(active)
+    setFiltered(active)
     setLoading(false)
   }
+
+  // Cross-section search — runs when user types in the search bar
+  const searchDropdown = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return null
+
+    function matchLead(l: LeadWithOrg) {
+      return (
+        l.organization?.name?.toLowerCase().includes(q) ||
+        l.organization?.location?.toLowerCase().includes(q) ||
+        l.primaryContact?.name?.toLowerCase().includes(q) ||
+        l.primaryContact?.phone?.toLowerCase().includes(q)
+      )
+    }
+
+    return {
+      myLeads:  leads.filter(matchLead).slice(0, 4),
+      followup: allSDRLeads.filter(l => ['call_again', 'not_reachable'].includes(l.status) && matchLead(l)).slice(0, 3),
+      demos:    allSDRLeads.filter(l => l.status === 'demo_booked' && matchLead(l)).slice(0, 3),
+    }
+  }, [search, leads, allSDRLeads])
 
   function openLead(lead: LeadWithOrg) {
     setSelectedLead(lead)
@@ -132,9 +158,76 @@ export default function SDRLeadsPage() {
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Search by org, contact name, phone, or status..."
+              placeholder="Search across My Leads, Follow-ups, Demos..."
               className="w-full pl-9 pr-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20 focus:border-[#1A56DB]"
             />
+
+            {/* Workspace-wide search dropdown */}
+            {searchDropdown && (
+              <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl border border-[#E2E8F0] shadow-lg z-50 overflow-hidden max-h-96 overflow-y-auto">
+                {searchDropdown.myLeads.length === 0 && searchDropdown.followup.length === 0 && searchDropdown.demos.length === 0 ? (
+                  <p className="text-xs text-[#94A3B8] text-center py-4">No results found</p>
+                ) : (
+                  <>
+                    {searchDropdown.myLeads.length > 0 && (
+                      <div>
+                        <div className="px-3 py-1.5 bg-[#F8FAFC] border-b border-[#E2E8F0]">
+                          <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8]">My Leads</p>
+                        </div>
+                        {searchDropdown.myLeads.map(lead => (
+                          <button
+                            key={lead.id}
+                            onMouseDown={e => { e.preventDefault(); openLead(lead) }}
+                            className="w-full text-left px-3 py-2.5 hover:bg-[#F8FAFC] transition-colors border-b border-[#F1F5F9] last:border-0"
+                          >
+                            <p className="text-[13px] font-medium text-[#0F172A]">{lead.organization?.name}</p>
+                            {lead.organization?.location && (
+                              <p className="text-[11px] text-[#94A3B8]">{lead.organization.location}</p>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {searchDropdown.followup.length > 0 && (
+                      <div>
+                        <div className="px-3 py-1.5 bg-[#F8FAFC] border-b border-[#E2E8F0]">
+                          <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8]">Follow-up Queue</p>
+                        </div>
+                        {searchDropdown.followup.map(lead => (
+                          <button
+                            key={lead.id}
+                            onMouseDown={e => { e.preventDefault(); router.push('/sdr/followups') }}
+                            className="w-full text-left px-3 py-2.5 hover:bg-[#F8FAFC] transition-colors border-b border-[#F1F5F9] last:border-0"
+                          >
+                            <p className="text-[13px] font-medium text-[#0F172A]">{lead.organization?.name}</p>
+                            <p className="text-[11px] text-[#94A3B8]">{lead.organization?.location ?? ''}{lead.organization?.location ? ' · ' : ''}Follow-up pending</p>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {searchDropdown.demos.length > 0 && (
+                      <div>
+                        <div className="px-3 py-1.5 bg-[#F8FAFC] border-b border-[#E2E8F0]">
+                          <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8]">My Demos</p>
+                        </div>
+                        {searchDropdown.demos.map(lead => (
+                          <button
+                            key={lead.id}
+                            onMouseDown={e => { e.preventDefault(); router.push('/sdr/demos') }}
+                            className="w-full text-left px-3 py-2.5 hover:bg-[#F8FAFC] transition-colors border-b border-[#F1F5F9] last:border-0"
+                          >
+                            <p className="text-[13px] font-medium text-[#0F172A]">{lead.organization?.name}</p>
+                            <p className="text-[11px] text-[#94A3B8]">{lead.organization?.location ?? ''}{lead.organization?.location ? ' · ' : ''}Demo booked</p>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
           </div>
           <button
             onClick={() => setShowOrgSearch(true)}
@@ -248,6 +341,14 @@ export default function SDRLeadsPage() {
             lead={selectedLead}
             onClose={() => { setShowPanel(false); setSelectedLead(null) }}
             onRefresh={fetchLeads}
+            onDemoBooked={(leadId: string) => {
+              // Optimistically remove the demo-booked lead from all lists and close panel
+              setLeads(prev => prev.filter(l => l.id !== leadId))
+              setFiltered(prev => prev.filter(l => l.id !== leadId))
+              setAllSDRLeads(prev => prev.filter(l => l.id !== leadId))
+              setShowPanel(false)
+              setSelectedLead(null)
+            }}
           />
         </div>
       )}
@@ -670,10 +771,12 @@ function LeadDetailPanel({
   lead,
   onClose,
   onRefresh,
+  onDemoBooked,
 }: {
   lead: LeadWithOrg
   onClose: () => void
   onRefresh: () => void
+  onDemoBooked: (leadId: string) => void
 }) {
   const [tab, setTab] = useState<'overview' | 'comments' | 'contacts'>('overview')
   const [activities, setActivities] = useState<any[]>([])
@@ -697,7 +800,7 @@ function LeadDetailPanel({
   }, [tab, lead.id])
 
   function fetchComments() {
-    fetch(`/api/leads/comments?lead_id=${lead.id}`)
+    fetch(`/api/leads/comments?lead_id=${lead.id}&source=lead`)
       .then(r => r.json())
       .then(d => setComments(Array.isArray(d) ? d : []))
   }
@@ -708,7 +811,7 @@ function LeadDetailPanel({
     const res = await fetch('/api/leads/comments', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ lead_id: lead.id, comment: commentText.trim() }),
+      body: JSON.stringify({ lead_id: lead.id, comment: commentText.trim(), source: 'lead' }),
     })
     if (res.ok) {
       const newComment = await res.json()
@@ -876,7 +979,7 @@ function LeadDetailPanel({
           lead={lead}
           contacts={contacts}
           onClose={() => setShowBookDemo(false)}
-          onSuccess={() => { setShowBookDemo(false); onRefresh() }}
+          onSuccess={() => { setShowBookDemo(false); onDemoBooked(lead.id) }}
         />
       )}
 
