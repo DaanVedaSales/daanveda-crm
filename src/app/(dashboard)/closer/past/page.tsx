@@ -28,12 +28,12 @@ export default async function DealHistoryPage() {
     : 0
 
   return (
-    <div className="flex-1 flex flex-col bg-[#F8FAFC]">
+    <div className="flex-1 min-h-0 flex flex-col bg-[#F8FAFC]">
       <TopBar
         title="Deal History"
         subtitle={`${wonDeals.length} won · ${lost.length} lost · ${ghosted.length} ghosted`}
       />
-      <div className="flex-1 p-6 space-y-5 animate-in-page">
+      <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-5 animate-in-page">
 
         {/* Summary KPIs */}
         <div className="grid grid-cols-3 gap-4">

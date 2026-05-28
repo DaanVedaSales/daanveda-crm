@@ -285,7 +285,7 @@ function KanbanColumn({
         onDragOver={e => { e.preventDefault(); setIsOver(true) }}
         onDragLeave={() => setIsOver(false)}
         onDrop={() => { setIsOver(false); onDrop(stage) }}
-        className="flex-1 min-h-[80px] rounded-xl p-2 space-y-2 transition-all duration-150 scrollbar-none"
+        className="flex-1 overflow-y-auto rounded-xl p-2 space-y-2 transition-all duration-150 scrollbar-thin"
         style={{
           backgroundColor: isOver ? `${color}12` : `${color}06`,
           outline: isOver ? `2px solid ${color}50` : 'none',
@@ -702,9 +702,12 @@ function DealPanel({ deal, contacts, onClose, onUpdate, onDelete }: {
                             )}
                           </div>
                           {c.designation && <p className="text-[11px] text-[#64748B]">{c.designation}</p>}
-                          <div className="flex gap-3 mt-1 text-[11px] text-[#94A3B8]">
+                          <div className="flex flex-wrap gap-3 mt-1 text-[11px] text-[#94A3B8]">
                             {c.phone && <span>{c.phone}</span>}
                             {c.email && <span>{c.email}</span>}
+                            {c.linkedin_url && (
+                              <a href={c.linkedin_url} target="_blank" rel="noreferrer" className="text-[#1A56DB] hover:underline">LinkedIn</a>
+                            )}
                           </div>
                         </div>
                         <button
@@ -1497,7 +1500,7 @@ export default function PipelinePage() {
         </div>
       ) : (
         <div
-          className="flex-1 flex gap-3 p-4 overflow-x-auto scrollbar-thin"
+          className="flex-1 min-h-0 flex gap-3 p-4 overflow-x-auto overflow-y-hidden scrollbar-thin"
           onDragEnd={() => setDraggingId(null)}
         >
           {visibleColumns.map(col => (

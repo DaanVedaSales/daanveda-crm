@@ -103,7 +103,7 @@ export default async function CloserDashboardPage() {
         subtitle={`Day ${daysElapsed} of 26 · ${achievementPct}% toward target`}
       />
 
-      <div className="flex-1 p-6 space-y-5 animate-in-page">
+      <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-5 animate-in-page">
 
         {/* ── COMMISSION HERO ─────────────────────────────────────────────── */}
         <div

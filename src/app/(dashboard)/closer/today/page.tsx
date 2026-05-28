@@ -5,7 +5,7 @@ import TopBar from '@/components/layout/TopBar'
 import { createClient } from '@/lib/supabase/client'
 import DateTimePicker from '@/components/ui/DateTimePicker'
 import { cn } from '@/lib/utils'
-import { CheckCircle, XCircle, RefreshCw, X, Bell, BellOff, Calendar, ExternalLink, Building2, Users, Banknote, Tag, AlertCircle, Target, Trash2 } from 'lucide-react'
+import { CheckCircle, XCircle, RefreshCw, X, Bell, BellOff, Calendar, ExternalLink, Building2, Users, Banknote, Tag, AlertCircle, Target, Trash2, ChevronDown } from 'lucide-react'
 
 interface DemoWithDetails {
   id: string
@@ -522,6 +522,8 @@ function DemoInfoPanel({
   contacts: any[]
   onClose: () => void
 }) {
+  const [kdmExpanded, setKdmExpanded] = useState(false)
+
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
       <div className="absolute inset-0 bg-[#0F172A]/40 backdrop-blur-[2px]" onClick={onClose} />
@@ -596,29 +598,38 @@ function DemoInfoPanel({
           {/* Key Decision Makers */}
           {contacts.length > 0 && (
             <div className="rounded-xl border border-[#E2E8F0] overflow-hidden">
-              <div className="px-4 py-3 bg-[#F8FAFC] border-b border-[#E2E8F0]">
+              <button
+                onClick={() => setKdmExpanded(p => !p)}
+                className="w-full flex items-center justify-between px-4 py-3 bg-[#F8FAFC] text-left"
+              >
                 <p className="text-label text-[#94A3B8]">Key Decision Makers · {contacts.length}</p>
-              </div>
-              <div className="p-3 space-y-2 bg-white">
-                {contacts.map((c: any) => (
-                  <div key={c.id} className="bg-[#F8FAFC] rounded-lg p-2.5 border border-[#F1F5F9]">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <p className="text-[13px] font-medium text-[#0F172A]">{c.name}</p>
-                      {c.is_primary && (
-                        <span className="text-[9px] font-semibold bg-[#1A56DB] text-white px-1.5 py-0.5 rounded-full">Primary</span>
-                      )}
+                <ChevronDown
+                  className={cn('w-3.5 h-3.5 text-[#94A3B8] transition-transform', kdmExpanded && 'rotate-180')}
+                  strokeWidth={1.75}
+                />
+              </button>
+              {kdmExpanded && (
+                <div className="p-3 space-y-2 bg-white border-t border-[#E2E8F0]">
+                  {contacts.map((c: any) => (
+                    <div key={c.id} className="bg-[#F8FAFC] rounded-lg p-2.5 border border-[#F1F5F9]">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <p className="text-[13px] font-medium text-[#0F172A]">{c.name}</p>
+                        {c.is_primary && (
+                          <span className="text-[9px] font-semibold bg-[#1A56DB] text-white px-1.5 py-0.5 rounded-full">Primary</span>
+                        )}
+                      </div>
+                      {c.designation && <p className="text-[11px] text-[#64748B]">{c.designation}</p>}
+                      <div className="flex flex-wrap gap-3 mt-1 text-[11px] text-[#94A3B8]">
+                        {c.phone && <span>{c.phone}</span>}
+                        {c.email && <span>{c.email}</span>}
+                        {c.linkedin_url && (
+                          <a href={c.linkedin_url} target="_blank" rel="noreferrer" className="text-[#1A56DB] hover:underline">LinkedIn</a>
+                        )}
+                      </div>
                     </div>
-                    {c.designation && <p className="text-[11px] text-[#64748B]">{c.designation}</p>}
-                    <div className="flex flex-wrap gap-3 mt-1 text-[11px] text-[#94A3B8]">
-                      {c.phone && <span>{c.phone}</span>}
-                      {c.email && <span>{c.email}</span>}
-                      {c.linkedin_url && (
-                        <a href={c.linkedin_url} target="_blank" rel="noreferrer" className="text-[#1A56DB] hover:underline">LinkedIn</a>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
