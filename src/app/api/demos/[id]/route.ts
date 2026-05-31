@@ -26,6 +26,13 @@ export async function PATCH(
     .single()
   const actorId = actorProfile?.id ?? ''
 
+  // Pre-fetch current demo state — needed to detect "reschedule from no_show" restoration
+  const { data: currentDemo } = await supabase
+    .from('demos')
+    .select('status, lead_id, org_id, sdr_id, closer_id')
+    .eq('id', params.id)
+    .single()
+
   const body = await req.json()
   const {
     status,
@@ -84,20 +91,48 @@ export async function PATCH(
   }
 
   // ── No Show ───────────────────────────────────────────────────────────────
+  // Lead completely leaves closer's workspace and returns to original SDR's follow-up queue
   if (status === 'no_show') {
+    const serviceSupabase = createServiceClient()
+    const nowIso = new Date().toISOString()
+    const todayDate = nowIso.split('T')[0]
+
+    // Fetch SDR name for activity note
+    const { data: sdrUser } = await supabase
+      .from('users').select('name').eq('id', data.sdr_id).single()
+
+    if (data.lead_id && data.sdr_id) {
+      promises.push(
+        // Return lead to original SDR's follow-up queue with no_show status
+        serviceSupabase.from('leads').update({
+          phase: 'sdr',
+          status: 'no_show',
+          callback_date: todayDate,
+          assigned_to: data.sdr_id,
+          updated_at: nowIso,
+        }).eq('id', data.lead_id) as unknown as Promise<unknown>,
+
+        // Hide deal from closer's Kanban (removed_from_board = true)
+        serviceSupabase.from('deals').update({
+          removed_from_board: true,
+          updated_at: nowIso,
+        }).eq('demo_id', params.id) as unknown as Promise<unknown>,
+      )
+    }
+
     promises.push(
       supabase.from('activities').insert({
         lead_id: data.lead_id,
         org_id: data.org_id,
         user_id: actorId,
         activity_type: 'note',
-        notes: 'Demo no-show — org did not attend.',
+        notes: `Demo no-show — org did not attend. Lead returned to SDR${sdrUser?.name ? ` ${sdrUser.name}` : ''} for rescheduling.`,
         new_value: 'demo_no_show',
       }),
     )
   }
 
-  // ── Reschedule activity log ────────────────────────────────────────────────
+  // ── Reschedule ────────────────────────────────────────────────────────────
   if (reschedule_date) {
     const rescheduledTo = new Date(reschedule_date).toLocaleString('en-IN', {
       day: 'numeric', month: 'short', year: 'numeric',
@@ -109,10 +144,37 @@ export async function PATCH(
         org_id: data.org_id,
         user_id: actorId,
         activity_type: 'note',
-        notes: `Demo rescheduled to ${rescheduledTo}.${new_sdr_id ? ` SDR reassigned.` : ''}${new_closer_id ? ` Closer reassigned.` : ''}`,
+        notes: `Demo rescheduled to ${rescheduledTo}.${new_sdr_id ? ` SDR reassigned.` : ''}${new_closer_id ? ` Closer reassigned.` : ''}${currentDemo?.status === 'no_show' ? ' Lead returned to closer workspace.' : ''}`,
         new_value: 'demo_rescheduled',
       }),
     )
+
+    // ── Restore from no_show: SDR rescheduled a no-show demo ─────────────────
+    // Return the lead to closer's workspace and restore the deal in the Kanban
+    if (currentDemo?.status === 'no_show' && currentDemo.lead_id) {
+      const serviceSupabase = createServiceClient()
+      const nowIso = new Date().toISOString()
+      const finalCloserId = new_closer_id || currentDemo.closer_id
+
+      promises.push(
+        // Return lead to closer workspace
+        serviceSupabase.from('leads').update({
+          phase: 'closer',
+          status: 'demo_booked',
+          assigned_to: finalCloserId,
+          callback_date: null,
+          updated_at: nowIso,
+        }).eq('id', currentDemo.lead_id) as unknown as Promise<unknown>,
+
+        // Restore deal to Kanban with correct closer
+        serviceSupabase.from('deals').update({
+          removed_from_board: false,
+          stage: 'demo_scheduled',
+          closer_id: finalCloserId,
+          updated_at: nowIso,
+        }).eq('demo_id', params.id) as unknown as Promise<unknown>,
+      )
+    }
   }
 
   // ── SDR Reassignment ──────────────────────────────────────────────────────

@@ -653,7 +653,7 @@ export type Database = {
       interest_signal: "hot" | "warm" | "cold" | "dead"
       invoice_status: "not_generated" | "sent" | "paid" | "overdue"
       lead_phase: "sdr" | "closer" | "recycled" | "converted" | "dead"
-      lead_status: "new" | "assigned" | "contacted" | "call_again" | "hot" | "demo_booked" | "not_interested" | "not_reachable" | "recycled" | "demo_done" | "proposal_sent" | "follow_up" | "negotiation" | "won" | "lost" | "ghosted" | "converted"
+      lead_status: "new" | "assigned" | "contacted" | "call_again" | "hot" | "demo_booked" | "not_interested" | "not_reachable" | "recycled" | "demo_done" | "proposal_sent" | "follow_up" | "negotiation" | "won" | "lost" | "ghosted" | "converted" | "no_show"
       lead_type: "Inbound" | "Outbound" | "Referral"
       user_role: "admin" | "sdr" | "closer" | "sales_ops"
     }
@@ -710,6 +710,20 @@ export type Enums<
     ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
     : never
 
+// Convenience type aliases — used throughout the app
+export type LeadStatus = Database["public"]["Enums"]["lead_status"]
+export type LeadPhase = Database["public"]["Enums"]["lead_phase"]
+export type InterestSignal = Database["public"]["Enums"]["interest_signal"]
+export type ActivityType = Database["public"]["Enums"]["activity_type"]
+export type DealStage = Database["public"]["Enums"]["deal_stage"]
+export type DemoStatus = Database["public"]["Enums"]["demo_status"]
+export type UserRole = Database["public"]["Enums"]["user_role"]
+
+// Row types for common tables
+export type Lead = Tables<'leads'>
+export type Organization = Tables<'organizations'>
+export type Dataset = Tables<'datasets'>
+
 export const Constants = {
   public: {
     Enums: {
@@ -720,7 +734,7 @@ export const Constants = {
       interest_signal: ["hot", "warm", "cold", "dead"],
       invoice_status: ["not_generated", "sent", "paid", "overdue"],
       lead_phase: ["sdr", "closer", "recycled", "converted", "dead"],
-      lead_status: ["new", "assigned", "contacted", "call_again", "hot", "demo_booked", "not_interested", "not_reachable", "recycled", "demo_done", "proposal_sent", "follow_up", "negotiation", "won", "lost", "ghosted", "converted"],
+      lead_status: ["new", "assigned", "contacted", "call_again", "hot", "demo_booked", "not_interested", "not_reachable", "recycled", "demo_done", "proposal_sent", "follow_up", "negotiation", "won", "lost", "ghosted", "converted", "no_show"],
       lead_type: ["Inbound", "Outbound", "Referral"],
       user_role: ["admin", "sdr", "closer", "sales_ops"],
     },

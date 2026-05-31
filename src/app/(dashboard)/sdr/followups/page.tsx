@@ -22,17 +22,20 @@ interface FollowupLead {
 // ── Expandable detail for a follow-up lead ────────────────────────────────────
 function LeadExpandedDetail({
   leadId,
+  leadStatus,
   onContactsLoaded,
   onBookDemo,
   onRescheduled,
   currentCallbackDate,
 }: {
   leadId: string
+  leadStatus: string
   onContactsLoaded: (contacts: any[]) => void
   onBookDemo: () => void
   onRescheduled: () => void
   currentCallbackDate: string | null
 }) {
+  const supabase = createClient()
   const [data, setData] = useState<{ contacts: any[]; activities: any[] } | null>(null)
   const [rescheduleDate, setRescheduleDate] = useState(currentCallbackDate?.split('T')[0] ?? '')
   const [rescheduling, setRescheduling] = useState(false)
@@ -41,6 +44,15 @@ function LeadExpandedDetail({
   const [comments, setComments] = useState<any[]>([])
   const [commentText, setCommentText] = useState('')
   const [postingComment, setPostingComment] = useState(false)
+
+  // No-show demo reschedule state
+  const [noShowDemo, setNoShowDemo] = useState<{ id: string; closer_id: string; closer_name: string } | null>(null)
+  const [demoRescheduleDate, setDemoRescheduleDate] = useState('')
+  const [newCloserId, setNewCloserId] = useState('')
+  const [closers, setClosers] = useState<{ id: string; name: string }[]>([])
+  const [reschedulingDemo, setReschedulingDemo] = useState(false)
+
+  const isNoShow = leadStatus === 'no_show'
 
   useEffect(() => {
     fetch(`/api/leads/${leadId}`)
@@ -54,6 +66,28 @@ function LeadExpandedDetail({
     fetch(`/api/leads/comments?lead_id=${leadId}&source=followup`)
       .then(r => r.json())
       .then(d => setComments(Array.isArray(d) ? d : []))
+
+    // For no-show leads: fetch the no-show demo and closers list
+    if (isNoShow) {
+      supabase.from('demos')
+        .select('id, closer_id, closer:users!demos_closer_id_fkey(name)')
+        .eq('lead_id', leadId)
+        .eq('status', 'no_show')
+        .eq('is_deleted', false)
+        .maybeSingle()
+        .then(({ data: demo }) => {
+          if (demo) {
+            setNoShowDemo({
+              id: demo.id,
+              closer_id: demo.closer_id,
+              closer_name: (demo.closer as any)?.name ?? '',
+            })
+          }
+        })
+      fetch('/api/closers')
+        .then(r => r.json())
+        .then(d => setClosers(Array.isArray(d) ? d : []))
+    }
   }, [leadId])
 
   async function postFollowupComment() {
@@ -84,6 +118,27 @@ function LeadExpandedDetail({
     if (res.ok) {
       setRescheduled(true)
       setTimeout(() => onRescheduled(), 800)
+    }
+  }
+
+  // For no-show leads: reschedule the demo itself → lead returns to closer workspace
+  async function handleDemoReschedule() {
+    if (!noShowDemo || !demoRescheduleDate) return
+    setReschedulingDemo(true)
+    const body: Record<string, unknown> = { reschedule_date: demoRescheduleDate }
+    if (newCloserId) body.new_closer_id = newCloserId
+    const res = await fetch(`/api/demos/${noShowDemo.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    setReschedulingDemo(false)
+    if (res.ok) {
+      // Lead is now demo_booked + phase=closer — it leaves the follow-up queue
+      setTimeout(() => onRescheduled(), 600)
+    } else {
+      const err = await res.json()
+      alert(err.error ?? 'Failed to reschedule demo')
     }
   }
 
@@ -192,13 +247,52 @@ function LeadExpandedDetail({
         )}
       </div>
 
-      {/* Book Demo button */}
-      <button
-        onClick={onBookDemo}
-        className="w-full py-2 bg-[#059669] text-white text-xs font-semibold rounded-xl hover:bg-[#047857] transition-colors"
-      >
-        Book Demo
-      </button>
+      {/* No-show: Reschedule Demo form OR regular Book Demo button */}
+      {isNoShow ? (
+        <div className="p-3.5 bg-red-50 rounded-xl border border-red-200 space-y-2.5">
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-red-700">Reschedule Demo</p>
+          <p className="text-[11px] text-red-600 leading-relaxed">
+            The org missed this demo. Pick a new slot and assign a closer — the lead will return to their pipeline automatically.
+          </p>
+          <div>
+            <label className="block text-[10px] font-medium text-[#64748B] mb-1">New Date &amp; Time <span className="text-red-500">*</span></label>
+            <DateTimePicker
+              value={demoRescheduleDate}
+              onChange={setDemoRescheduleDate}
+              placeholder="Pick new demo date & time"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-medium text-[#64748B] mb-1">
+              Assign Closer <span className="text-[#94A3B8] font-normal">(optional — keep current if unchanged)</span>
+            </label>
+            <select
+              value={newCloserId}
+              onChange={e => setNewCloserId(e.target.value)}
+              className="w-full px-3 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20 focus:border-[#1A56DB]"
+            >
+              <option value="">
+                Keep current{noShowDemo?.closer_name ? ` (${noShowDemo.closer_name})` : ''}
+              </option>
+              {closers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+          <button
+            onClick={handleDemoReschedule}
+            disabled={reschedulingDemo || !demoRescheduleDate}
+            className="w-full py-2 bg-[#1A56DB] text-white text-xs font-semibold rounded-xl hover:bg-[#1A3DB5] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {reschedulingDemo ? 'Rescheduling...' : 'Reschedule & Send to Closer'}
+          </button>
+        </div>
+      ) : (
+        <button
+          onClick={onBookDemo}
+          className="w-full py-2 bg-[#059669] text-white text-xs font-semibold rounded-xl hover:bg-[#047857] transition-colors"
+        >
+          Book Demo
+        </button>
+      )}
     </div>
   )
 }
@@ -253,7 +347,7 @@ export default function FollowupsPage() {
       .select('id, org_id, status, callback_date, follow_up_date, updated_at, organization:organizations(name, location, url, annual_revenue, team_size)')
       .eq('assigned_to', profile.id)
       .eq('is_deleted', false)
-      .in('status', ['call_again', 'not_reachable'])
+      .in('status', ['call_again', 'not_reachable', 'no_show'])
       .order('callback_date', { ascending: true, nullsFirst: false })
 
     setLeads((data ?? []) as unknown as FollowupLead[])
@@ -261,10 +355,13 @@ export default function FollowupsPage() {
   }
 
   const today = new Date().toISOString().split('T')[0]
-  const overdue = leads.filter(l => l.callback_date && l.callback_date < today)
-  const dueToday = leads.filter(l => l.callback_date === today)
-  const upcoming = leads.filter(l => l.callback_date && l.callback_date > today)
-  const unscheduled = leads.filter(l => !l.callback_date)
+  // Separate no-show leads — they always appear first as a priority group
+  const noShowLeads = leads.filter(l => l.status === 'no_show')
+  const regularLeads = leads.filter(l => l.status !== 'no_show')
+  const overdue = regularLeads.filter(l => l.callback_date && l.callback_date < today)
+  const dueToday = regularLeads.filter(l => l.callback_date === today)
+  const upcoming = regularLeads.filter(l => l.callback_date && l.callback_date > today)
+  const unscheduled = regularLeads.filter(l => !l.callback_date)
 
   if (loading) {
     return (
@@ -289,7 +386,7 @@ export default function FollowupsPage() {
   if (leads.length === 0) {
     return (
       <div className="flex-1 flex flex-col bg-[#F8FAFC]">
-        <TopBar title="Follow-up Queue" subtitle="All clear" />
+        <TopBar title="Follow-up Queue" subtitle="All clear — no pending follow-ups" />
         <div className="flex-1 flex items-center justify-center p-8">
           <div className="max-w-sm text-center">
             <div className="w-12 h-12 rounded-2xl bg-[#F0FDF4] border border-[#BBF7D0] flex items-center justify-center mx-auto mb-4">
@@ -337,10 +434,18 @@ export default function FollowupsPage() {
       setConfirmDelete(false)
     }
 
+    const isNoShow = lead.status === 'no_show'
+
     return (
-      <div ref={rowRef} className="border-b border-[#F1F5F9] last:border-0">
+      <div ref={rowRef} className={cn(
+        'border-b border-[#F1F5F9] last:border-0',
+        isNoShow && 'border-l-4 border-l-[#EF4444]'
+      )}>
         <div
-          className="flex items-center justify-between px-5 py-3.5 hover:bg-[#F8FAFC] transition-colors cursor-pointer"
+          className={cn(
+            'flex items-center justify-between px-5 py-3.5 hover:bg-[#F8FAFC] transition-colors cursor-pointer',
+            isNoShow && 'bg-red-50/30 hover:bg-red-50/60'
+          )}
           onClick={() => setExpanded(prev => !prev)}
         >
           <div className="flex-1 min-w-0">
@@ -348,9 +453,15 @@ export default function FollowupsPage() {
             <p className="text-[11px] text-[#94A3B8] mt-0.5">{lead.organization?.location}</p>
           </div>
           <div className="flex items-center gap-3 shrink-0 ml-4">
-            <span className={cn('text-[10px] px-2 py-0.5 rounded-full font-medium', LEAD_STATUS_COLORS[lead.status])}>
-              {LEAD_STATUS_LABELS[lead.status]}
-            </span>
+            {isNoShow ? (
+              <span className="text-[10px] font-semibold bg-red-100 text-red-700 border border-red-200 px-2 py-0.5 rounded-full">
+                No-show · Reschedule Demo
+              </span>
+            ) : (
+              <span className={cn('text-[10px] px-2 py-0.5 rounded-full font-medium', LEAD_STATUS_COLORS[lead.status])}>
+                {LEAD_STATUS_LABELS[lead.status]}
+              </span>
+            )}
             {lead.callback_date ? (
               <span className={cn(
                 'text-[12px] font-semibold min-w-[60px] text-right',
@@ -400,13 +511,14 @@ export default function FollowupsPage() {
         {expanded && (
           <LeadExpandedDetail
             leadId={lead.id}
+            leadStatus={lead.status}
             onContactsLoaded={setContacts}
             onBookDemo={() => setShowBookDemo(true)}
             onRescheduled={fetchLeads}
             currentCallbackDate={lead.callback_date}
           />
         )}
-        {showBookDemo && (
+        {showBookDemo && !isNoShow && (
           <BookDemoModal
             lead={lead}
             contacts={contacts}
@@ -442,9 +554,10 @@ export default function FollowupsPage() {
     <div className="flex-1 min-h-0 flex flex-col bg-[#F8FAFC]">
       <TopBar
         title="Follow-up Queue"
-        subtitle={`${leads.length} pending · ${overdue.length} overdue · ${dueToday.length} today`}
+        subtitle={`${leads.length} pending · ${noShowLeads.length > 0 ? `${noShowLeads.length} no-show · ` : ''}${overdue.length} overdue · ${dueToday.length} today`}
       />
       <div className="flex-1 p-6 space-y-5 overflow-y-auto animate-in-page">
+        <Section title="No-show · Pending Reschedule" items={noShowLeads} accentColor="#EF4444" />
         <Section title="Overdue" items={overdue} accentColor="#EF4444" />
         <Section title="Today" items={dueToday} accentColor="#1A56DB" />
         <Section title="Upcoming" items={upcoming} accentColor="#64748B" />

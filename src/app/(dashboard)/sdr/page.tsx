@@ -26,16 +26,19 @@ export default async function SDRDashboardPage() {
   const monthStart  = `${year}-${String(month).padStart(2, '0')}-01`
   const today       = now.toISOString().split('T')[0]
 
-  const [demosRes, leadsRes, followupsRes] = await Promise.all([
+  const [demosRes, leadsRes, followupsRes, noShowRes] = await Promise.all([
     supabase.from('demos').select('id', { count: 'exact', head: true }).eq('sdr_id', profile.id).gte('created_at', monthStart),
     supabase.from('leads').select('id', { count: 'exact', head: true }).eq('assigned_to', profile.id).eq('phase', 'sdr'),
     supabase.from('leads').select('id', { count: 'exact', head: true }).eq('assigned_to', profile.id)
       .lte('follow_up_date', today).in('status', ['call_again', 'follow_up']),
+    supabase.from('leads').select('id', { count: 'exact', head: true }).eq('assigned_to', profile.id)
+      .eq('status', 'no_show').eq('is_deleted', false),
   ])
 
-  const demosBooked      = demosRes.count ?? 0
-  const activeLeads      = leadsRes.count ?? 0
-  const overdueFollowups = followupsRes.count ?? 0
+  const demosBooked        = demosRes.count ?? 0
+  const activeLeads        = leadsRes.count ?? 0
+  const overdueFollowups   = followupsRes.count ?? 0
+  const pendingReschedule  = noShowRes.count ?? 0
   const target           = profile.monthly_demo_target ?? 0
 
   const dailyTarget     = target > 0 ? target / 26 : 0
@@ -72,7 +75,7 @@ export default async function SDRDashboardPage() {
         subtitle={`Day ${daysElapsed} of 26 · ${pacePercent}% of demo pace`}
       />
 
-      <div className="flex-1 p-6 space-y-5 animate-in-page">
+      <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-5 animate-in-page">
 
         {/* ── PACE HERO ───────────────────────────────────────────────────── */}
         <div
@@ -136,8 +139,8 @@ export default async function SDRDashboardPage() {
           </div>
         </div>
 
-        {/* ── 3 KPI CARDS ─────────────────────────────────────────────────── */}
-        <div className="grid grid-cols-3 gap-4">
+        {/* ── 4 KPI CARDS ─────────────────────────────────────────────────── */}
+        <div className="grid grid-cols-4 gap-4">
           <KpiCard
             label="Demos Booked"
             value={demosBooked}
@@ -155,6 +158,12 @@ export default async function SDRDashboardPage() {
             value={overdueFollowups}
             subtitle={overdueFollowups > 0 ? 'Needs action today' : 'Queue is clear'}
             accentColor={overdueFollowups > 0 ? '#EF4444' : '#059669'}
+          />
+          <KpiCard
+            label="Pending Reschedule"
+            value={pendingReschedule}
+            subtitle={pendingReschedule > 0 ? 'No-show demos to reschedule' : 'No pending reschedules'}
+            accentColor={pendingReschedule > 0 ? '#EF4444' : '#059669'}
           />
         </div>
 

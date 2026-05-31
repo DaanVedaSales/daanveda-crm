@@ -73,7 +73,7 @@ export async function GET(request: Request) {
       // 1. Demos booked in period
       let demosQuery = supabase
         .from('demos')
-        .select('id, status', { count: 'exact' })
+        .select('id, status, lead_id', { count: 'exact' })
         .eq('sdr_id', sdr.id)
 
       if (rangeStart) demosQuery = demosQuery.gte('created_at', rangeStart)
@@ -93,20 +93,28 @@ export async function GET(request: Request) {
 
       const { count: demosAttended } = await attendedQuery
 
-      // 2. Demo outcomes (attended vs no_show) — period-scoped to match selected filter
-      let demoOutcomesQuery = supabase
-        .from('demos')
-        .select('id, status')
-        .eq('sdr_id', sdr.id)
-        .in('status', ['attended', 'no_show'])
+      // 2. Demo quality metrics — period-scoped
+      // attended: demo.status = 'attended' is a terminal state, always accurate
+      const totalAttended = (demosInPeriod ?? []).filter((d: any) => d.status === 'attended').length
 
-      if (rangeStart) demoOutcomesQuery = demoOutcomesQuery.gte('created_at', rangeStart)
-      if (rangeEnd)   demoOutcomesQuery = demoOutcomesQuery.lte('created_at', rangeEnd)
+      // no_show: counted via immutable activity log events (permanent — persists even after rescheduling)
+      // This ensures every no-show click is permanently attributed to the SDR, regardless of later status changes
+      const leadIds = (demosInPeriod ?? []).map((d: any) => d.lead_id).filter(Boolean)
+      let totalNoShow = 0
+      if (leadIds.length > 0) {
+        let noShowQuery = supabase
+          .from('activities')
+          .select('id', { count: 'exact', head: true })
+          .in('lead_id', leadIds)
+          .eq('new_value', 'demo_no_show')
 
-      const { data: periodDemoOutcomes } = await demoOutcomesQuery
+        if (rangeStart) noShowQuery = noShowQuery.gte('created_at', rangeStart)
+        if (rangeEnd)   noShowQuery = noShowQuery.lte('created_at', rangeEnd)
 
-      const totalAttended = (periodDemoOutcomes ?? []).filter(d => d.status === 'attended').length
-      const totalNoShow   = (periodDemoOutcomes ?? []).filter(d => d.status === 'no_show').length
+        const { count: noShowCount } = await noShowQuery
+        totalNoShow = noShowCount ?? 0
+      }
+
       const totalCompleted = totalAttended + totalNoShow
       const showUpRate = totalCompleted >= 3
         ? Math.round((totalAttended / totalCompleted) * 100)

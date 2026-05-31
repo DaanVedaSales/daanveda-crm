@@ -20,6 +20,7 @@ export const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
   lost: 'Lost',
   ghosted: 'Ghosted',
   converted: 'Converted',
+  no_show: 'No Show',
 }
 
 export const LEAD_STATUS_COLORS: Record<LeadStatus, string> = {
@@ -40,6 +41,7 @@ export const LEAD_STATUS_COLORS: Record<LeadStatus, string> = {
   lost: 'bg-red-50 text-red-500',
   ghosted: 'bg-slate-100 text-slate-500',
   converted: 'bg-green-100 text-green-800',
+  no_show: 'bg-red-100 text-red-700',
 }
 
 // ─── Interest Signal Config ──────────────────────────────────────────────────
