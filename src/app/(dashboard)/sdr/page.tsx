@@ -26,8 +26,9 @@ export default async function SDRDashboardPage() {
   const monthStart  = `${year}-${String(month).padStart(2, '0')}-01`
   const today       = now.toISOString().split('T')[0]
 
+  // Fetch demos with IDs so we can run quality + pipeline queries downstream
   const [demosRes, leadsRes, followupsRes, noShowRes] = await Promise.all([
-    supabase.from('demos').select('id', { count: 'exact', head: true }).eq('sdr_id', profile.id).gte('created_at', monthStart),
+    supabase.from('demos').select('id, lead_id').eq('sdr_id', profile.id).eq('is_deleted', false).gte('created_at', monthStart),
     supabase.from('leads').select('id', { count: 'exact', head: true }).eq('assigned_to', profile.id).eq('phase', 'sdr'),
     supabase.from('leads').select('id', { count: 'exact', head: true }).eq('assigned_to', profile.id)
       .lte('follow_up_date', today).in('status', ['call_again', 'follow_up']),
@@ -35,12 +36,71 @@ export default async function SDRDashboardPage() {
       .eq('status', 'no_show').eq('is_deleted', false),
   ])
 
-  const demosBooked        = demosRes.count ?? 0
-  const activeLeads        = leadsRes.count ?? 0
-  const overdueFollowups   = followupsRes.count ?? 0
-  const pendingReschedule  = noShowRes.count ?? 0
-  const target           = profile.monthly_demo_target ?? 0
+  const demosThisMonth    = (demosRes.data ?? []) as { id: string; lead_id: string }[]
+  const demosBooked       = demosThisMonth.length
+  const demoIds           = demosThisMonth.map(d => d.id)
+  const demoLeadIds       = demosThisMonth.map(d => d.lead_id).filter(Boolean)
+  const activeLeads       = leadsRes.count ?? 0
+  const overdueFollowups  = followupsRes.count ?? 0
+  const pendingReschedule = noShowRes.count ?? 0
+  const target            = profile.monthly_demo_target ?? 0
 
+  // ── Quality + pipeline metrics ────────────────────────────────────────────
+  // Outreach activity count (for cold → demo %)
+  const outreachCount = (await supabase
+    .from('activities')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', profile.id)
+    .in('activity_type', ['call', 'email', 'whatsapp', 'linkedin'])
+    .gte('created_at', monthStart)
+  ).count ?? 0
+
+  let noShowCount = 0
+  let unqualifiedCount = 0
+  let pipelineDeals: { id: string; stage: string; deal_value: number | null; organization: { name: string } | null }[] = []
+
+  if (demoIds.length > 0) {
+    // Unqualified count + pipeline deals run in parallel (both need demoIds)
+    const [unqualRes, pdRes] = await Promise.all([
+      supabase.from('deals')
+        .select('id', { count: 'exact', head: true })
+        .in('demo_id', demoIds)
+        .eq('stage', 'unqualified'),
+      supabase.from('deals')
+        .select('id, stage, deal_value, organization:organizations(name)')
+        .in('demo_id', demoIds)
+        .in('stage', ['won', 'negotiation'])
+        .eq('is_deleted', false),
+    ])
+    unqualifiedCount = unqualRes.count ?? 0
+    pipelineDeals    = (pdRes.data ?? []) as any[]
+  }
+
+  if (demoLeadIds.length > 0) {
+    // No-show events via immutable activity log (permanent even after reschedule)
+    noShowCount = (await supabase
+      .from('activities')
+      .select('id', { count: 'exact', head: true })
+      .in('lead_id', demoLeadIds)
+      .eq('new_value', 'demo_no_show')
+      .gte('created_at', monthStart)
+    ).count ?? 0
+  }
+
+  // ── Derived quality metrics (only meaningful with ≥ 3 demos) ─────────────
+  const noShowPct      = demosBooked >= 3 ? Math.round((noShowCount / demosBooked) * 100) : null
+  const unqualifiedPct = demosBooked >= 3 ? Math.round((unqualifiedCount / demosBooked) * 100) : null
+  const coldToDemoPct  = outreachCount > 0 ? Math.round((demosBooked / outreachCount) * 100) : null
+
+  // ── Commission ────────────────────────────────────────────────────────────
+  const achievementPct = target > 0 ? Math.round((demosBooked / target) * 100) : 0
+  const sdrMultiplier  = achievementPct >= 120 ? 1.5 : achievementPct >= 100 ? 1.25 : achievementPct >= 70 ? 1.0 : 0
+  const sdrCommission  = Math.round(demosBooked * 500 * sdrMultiplier)
+
+  const wonDeals         = pipelineDeals.filter(d => d.stage === 'won')
+  const negotiationDeals = pipelineDeals.filter(d => d.stage === 'negotiation')
+
+  // ── Pace calculations ─────────────────────────────────────────────────────
   const dailyTarget     = target > 0 ? target / 26 : 0
   const expectedByNow   = dailyTarget * daysElapsed
   const paceRatio       = expectedByNow > 0 ? demosBooked / expectedByNow : 1
@@ -93,10 +153,7 @@ export default async function SDRDashboardPage() {
                   {demosBooked}
                 </span>
                 <span className="text-[13px] text-[#94A3B8]">of {target} demos</span>
-                <span
-                  className="text-[13px] font-semibold"
-                  style={{ color: paceColor }}
-                >
+                <span className="text-[13px] font-semibold" style={{ color: paceColor }}>
                   {pacePercent}%
                 </span>
               </div>
@@ -162,10 +219,115 @@ export default async function SDRDashboardPage() {
           <KpiCard
             label="Pending Reschedule"
             value={pendingReschedule}
-            subtitle={pendingReschedule > 0 ? 'No-show demos to reschedule' : 'No pending reschedules'}
+            subtitle={pendingReschedule > 0 ? 'No-show demos awaiting reschedule' : 'No pending reschedules'}
             accentColor={pendingReschedule > 0 ? '#EF4444' : '#059669'}
           />
         </div>
+
+        {/* ── DEMO QUALITY SIGNALS ─────────────────────────────────────────── */}
+        {demosBooked >= 3 && (
+          <div
+            className="bg-white rounded-2xl border border-[#E2E8F0] px-6 py-5"
+            style={{ boxShadow: '0 1px 4px rgba(15,23,42,0.06)' }}
+          >
+            <p className="text-label text-[#94A3B8] mb-4">Demo Quality Signals</p>
+            <div className="grid grid-cols-3 gap-6">
+              <div>
+                <p className="text-[11px] text-[#64748B] mb-1.5">No-show Rate</p>
+                <p
+                  className="text-[1.75rem] font-bold leading-none"
+                  style={{ color: noShowPct !== null ? (noShowPct > 20 ? '#EF4444' : noShowPct > 10 ? '#F59E0B' : '#059669') : '#94A3B8' }}
+                >
+                  {noShowPct !== null ? `${noShowPct}%` : '—'}
+                </p>
+                <p className="text-[10px] text-[#94A3B8] mt-1.5">{noShowCount} events this month</p>
+              </div>
+              <div className="border-l border-[#F1F5F9] pl-6">
+                <p className="text-[11px] text-[#64748B] mb-1.5">Unqualified Rate</p>
+                <p
+                  className="text-[1.75rem] font-bold leading-none"
+                  style={{ color: unqualifiedPct !== null ? (unqualifiedPct > 30 ? '#EF4444' : unqualifiedPct > 15 ? '#F59E0B' : '#059669') : '#94A3B8' }}
+                >
+                  {unqualifiedPct !== null ? `${unqualifiedPct}%` : '—'}
+                </p>
+                <p className="text-[10px] text-[#94A3B8] mt-1.5">{unqualifiedCount} marked by closer</p>
+              </div>
+              <div className="border-l border-[#F1F5F9] pl-6">
+                <p className="text-[11px] text-[#64748B] mb-1.5">Cold Call → Demo</p>
+                <p className="text-[1.75rem] font-bold leading-none text-[#1A56DB]">
+                  {coldToDemoPct !== null ? `${coldToDemoPct}%` : '—'}
+                </p>
+                <p className="text-[10px] text-[#94A3B8] mt-1.5">{outreachCount} outreach activities</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── PIPELINE FROM YOUR DEMOS ─────────────────────────────────────── */}
+        {pipelineDeals.length > 0 && (
+          <div
+            className="bg-white rounded-2xl border border-[#E2E8F0] overflow-hidden"
+            style={{ boxShadow: '0 1px 4px rgba(15,23,42,0.06)' }}
+          >
+            <div className="px-5 py-4 border-b border-[#F1F5F9] flex items-center justify-between">
+              <div>
+                <p className="text-label text-[#94A3B8]">Pipeline from Your Demos</p>
+                <p className="text-[13px] font-semibold text-[#0F172A] mt-0.5">
+                  {pipelineDeals.length} {pipelineDeals.length === 1 ? 'deal' : 'deals'} active
+                </p>
+              </div>
+              {sdrCommission > 0 && (
+                <div className="text-right">
+                  <p className="text-[10px] text-[#94A3B8] mb-0.5">Est. commission this month</p>
+                  <p className="text-[1.125rem] font-bold text-[#059669]">
+                    ₹{sdrCommission.toLocaleString('en-IN')}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {negotiationDeals.length > 0 && (
+              <div className="px-5 py-3.5 border-b border-[#F1F5F9]">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-[#F59E0B] mb-2.5">
+                  In Negotiation · {negotiationDeals.length}
+                </p>
+                <div className="space-y-2">
+                  {negotiationDeals.map((d: any) => (
+                    <div key={d.id} className="flex items-center justify-between">
+                      <p className="text-[13px] text-[#374151]">{d.organization?.name ?? '—'}</p>
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+                        Negotiation
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {wonDeals.length > 0 && (
+              <div className="px-5 py-3.5">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-[#059669] mb-2.5">
+                  Won This Month · {wonDeals.length}
+                </p>
+                <div className="space-y-2">
+                  {wonDeals.map((d: any) => (
+                    <div key={d.id} className="flex items-center justify-between">
+                      <p className="text-[13px] text-[#374151]">{d.organization?.name ?? '—'}</p>
+                      <div className="flex items-center gap-2.5">
+                        {d.deal_value && (
+                          <span className="text-[11px] text-[#94A3B8]">
+                            ₹{(d.deal_value / 100000).toFixed(1)}L deal
+                          </span>
+                        )}
+                        <span className="text-[11px] font-semibold text-[#059669]">+₹500</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ── QUICK ACTIONS ───────────────────────────────────────────────── */}
         <div className="grid grid-cols-2 gap-4">
@@ -207,7 +369,7 @@ export default async function SDRDashboardPage() {
               <span className={`font-semibold ${overdueFollowups > 0 ? 'text-[#EF4444]' : 'text-[#059669]'}`}>
                 {overdueFollowups}
               </span>{' '}
-              {overdueFollowups === 1 ? 'overdue' : 'overdue'}
+              overdue
             </p>
             <p className="text-[11px] text-[#94A3B8] mt-1.5 group-hover:text-[#64748B] transition-colors">
               Open follow-up queue ↗

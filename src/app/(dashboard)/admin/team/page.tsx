@@ -232,6 +232,11 @@ function SdrDetailPanel({
                 valueClass={sdr.show_up_rate !== null ? (sdr.show_up_rate >= 70 ? 'text-[#059669]' : 'text-[#EF4444]') : 'text-[#94A3B8]'} />
               <StatRow label="No-Shows" value={sdr.no_shows} />
               <StatRow label="Unqualified (by Closer)" value={sdr.unqualified} />
+              <StatRow
+                label="Unqualified %"
+                value={sdr.unqualified_pct !== null ? `${sdr.unqualified_pct}%` : '—'}
+                valueClass={(sdr.unqualified_pct ?? 0) > 25 ? 'text-[#EF4444]' : (sdr.unqualified_pct ?? 0) > 15 ? 'text-[#F59E0B]' : 'text-[#64748B]'}
+              />
               <StatRow label="Already Converted" value={sdr.already_converted} valueClass="text-[#059669]" />
             </div>
           </div>

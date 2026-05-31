@@ -23,6 +23,7 @@ interface SdrStat {
   no_shows: number
   show_up_rate: number | null
   unqualified: number
+  unqualified_pct: number | null
   already_converted: number
   achievement_pct: number | null
 }
@@ -245,6 +246,11 @@ function SdrPanel({ sdr, onClose }: { sdr: SdrStat; onClose: () => void }) {
               />
               <StatRow label="No-Shows" value={sdr.no_shows} />
               <StatRow label="Unqualified (by Closer)" value={sdr.unqualified} />
+              <StatRow
+                label="Unqualified %"
+                value={sdr.unqualified_pct !== null ? `${sdr.unqualified_pct}%` : '—'}
+                valueClass={(sdr.unqualified_pct ?? 0) > 25 ? 'text-[#EF4444]' : (sdr.unqualified_pct ?? 0) > 15 ? 'text-[#F59E0B]' : 'text-[#64748B]'}
+              />
               <StatRow label="Already Converted" value={sdr.already_converted} valueClass="text-[#059669]" />
             </div>
           </div>

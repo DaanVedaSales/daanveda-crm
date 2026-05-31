@@ -48,7 +48,7 @@ export default async function CloserDashboardPage() {
   sevenDaysLater.setDate(sevenDaysLater.getDate() + 7)
   const weekEnd = sevenDaysLater.toISOString().split('T')[0]
 
-  const [wonRes, pipelineRes, todayDemosRes, followupsRes, commRes, upcomingDemosRes] = await Promise.all([
+  const [wonRes, pipelineRes, todayDemosRes, followupsRes, upcomingDemosRes, demosAssignedRes, lostGhostedRes] = await Promise.all([
     supabase.from('deals').select('deal_value').eq('closer_id', profile.id).in('stage', ['won', 'converted']).gte('date_won_lost', monthStart),
     supabase.from('deals').select('id', { count: 'exact', head: true }).eq('closer_id', profile.id)
       .not('stage', 'in', '("won","lost","ghosted","converted")')
@@ -58,7 +58,6 @@ export default async function CloserDashboardPage() {
       .in('status', ['scheduled', 'rescheduled']),
     supabase.from('deals').select('id', { count: 'exact', head: true }).eq('closer_id', profile.id)
       .lte('next_follow_up', today).not('stage', 'in', '("won","lost","ghosted")'),
-    supabase.from('commissions').select('commission_amt').eq('user_id', profile.id).eq('month', month).eq('year', year),
     supabase.from('demos')
       .select('id, demo_date, organization:organizations(name), sdr:users!demos_sdr_id_fkey(name)')
       .eq('closer_id', profile.id)
@@ -67,21 +66,38 @@ export default async function CloserDashboardPage() {
       .lte('demo_date', `${weekEnd}T23:59:59`)
       .order('demo_date', { ascending: true })
       .limit(8),
+    // Demos assigned to this closer this month
+    supabase.from('demos').select('id', { count: 'exact', head: true })
+      .eq('closer_id', profile.id).eq('is_deleted', false).gte('created_at', monthStart),
+    // Terminal outcomes for win rate calculation
+    supabase.from('deals').select('id', { count: 'exact', head: true })
+      .eq('closer_id', profile.id).in('stage', ['lost', 'ghosted']).gte('updated_at', monthStart),
   ])
 
   const revenueWon       = (wonRes.data ?? []).reduce((s, d) => s + (d.deal_value ?? 0), 0)
+  const wonCount         = (wonRes.data ?? []).length
   const activePipeline   = pipelineRes.count ?? 0
   const todayDemos       = todayDemosRes.count ?? 0
   const overdueFollowups = followupsRes.count ?? 0
-  const commissionEarned = (commRes.data ?? []).reduce((s, c) => s + (c.commission_amt ?? 0), 0)
   const upcomingDemos    = (upcomingDemosRes.data ?? []) as any[]
+  const demosAssigned    = demosAssignedRes.count ?? 0
+  const lostGhosted      = lostGhostedRes.count ?? 0
   const target           = profile.monthly_revenue_target
+
+  // Win rate: won / (won + lost + ghosted) — only meaningful with ≥ 2 outcomes
+  const totalOutcomes = wonCount + lostGhosted
+  const winRate       = totalOutcomes >= 2 ? Math.round((wonCount / totalOutcomes) * 100) : null
 
   const expectedByNow   = target > 0 ? (target / 26) * daysElapsed : 0
   const paceRatio       = expectedByNow > 0 ? revenueWon / expectedByNow : 1
   const paceColor       = paceRatio >= 1.05 ? '#059669' : paceRatio >= 0.85 ? '#1A56DB' : paceRatio >= 0.6 ? '#F59E0B' : '#EF4444'
   const progressPercent = target > 0 ? Math.min((revenueWon / target) * 100, 100) : 0
   const achievementPct  = target > 0 ? Math.round((revenueWon / target) * 100) : 0
+
+  // Dynamic commission — 7% of revenue × achievement multiplier
+  // Calculated inline; does not rely on commissions table (which requires manual admin population)
+  const commMultiplier      = achievementPct >= 120 ? 1.5 : achievementPct >= 100 ? 1.25 : achievementPct >= 70 ? 1.0 : 0
+  const estimatedCommission = Math.round(revenueWon * 0.07 * commMultiplier)
 
   const zoneLabel =
     achievementPct >= 120 ? 'Accelerator Zone'
@@ -124,13 +140,14 @@ export default async function CloserDashboardPage() {
               </div>
             </div>
             <div className="text-right">
-              <p className="text-label text-[#94A3B8] mb-1">Earned this month</p>
+              <p className="text-label text-[#94A3B8] mb-1">Est. Commission</p>
               <p
                 className="text-[2rem] font-bold text-[#0F172A]"
                 style={{ fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.03em' }}
               >
-                {formatCurrency(commissionEarned)}
+                {formatCurrency(estimatedCommission)}
               </p>
+              <p className="text-[10px] text-[#94A3B8] mt-1">7% of revenue · locked by admin at month end</p>
             </div>
           </div>
 
@@ -191,6 +208,45 @@ export default async function CloserDashboardPage() {
                 {stat.sub} ↗
               </p>
             </a>
+          ))}
+        </div>
+
+        {/* ── CONVERSION METRICS ──────────────────────────────────────────── */}
+        <div className="grid grid-cols-3 gap-4">
+          {[
+            {
+              label: 'Demos This Month',
+              value: demosAssigned,
+              sub: 'assigned to you',
+              color: '#7C3AED',
+            },
+            {
+              label: 'Won This Month',
+              value: wonCount,
+              sub: wonCount === 1 ? 'deal closed' : 'deals closed',
+              color: '#059669',
+            },
+            {
+              label: 'Win Rate',
+              value: winRate !== null ? `${winRate}%` : '—',
+              sub: totalOutcomes >= 2 ? `${wonCount}W · ${lostGhosted} lost/ghosted` : 'Need ≥ 2 outcomes',
+              color: winRate !== null ? (winRate >= 30 ? '#059669' : winRate >= 15 ? '#F59E0B' : '#EF4444') : '#94A3B8',
+            },
+          ].map(stat => (
+            <div
+              key={stat.label}
+              className="bg-white rounded-2xl border border-[#E2E8F0] p-5"
+              style={{ boxShadow: '0 1px 4px rgba(15,23,42,0.06)' }}
+            >
+              <p className="text-label text-[#64748B] mb-3">{stat.label}</p>
+              <p
+                className="text-[2rem] font-bold leading-none"
+                style={{ color: stat.color, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.03em' }}
+              >
+                {stat.value}
+              </p>
+              <p className="text-[11px] text-[#94A3B8] mt-2">{stat.sub}</p>
+            </div>
           ))}
         </div>
 
