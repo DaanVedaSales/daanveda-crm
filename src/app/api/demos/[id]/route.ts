@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { toISTDateString, IST_TIMEZONE } from '@/lib/utils'
 
 // PATCH /api/demos/:id — update demo status, reminder_sent, post-demo notes, reschedule, reassign
 //
@@ -94,8 +95,8 @@ export async function PATCH(
   // Lead completely leaves closer's workspace and returns to original SDR's follow-up queue
   if (status === 'no_show') {
     const serviceSupabase = createServiceClient()
-    const nowIso = new Date().toISOString()
-    const todayDate = nowIso.split('T')[0]
+    const nowIso = new Date().toISOString()   // UTC instant for updated_at
+    const todayDate = toISTDateString()       // IST calendar day for callback_date
 
     // Fetch SDR name for activity note
     const { data: sdrUser } = await supabase
@@ -135,6 +136,7 @@ export async function PATCH(
   // ── Reschedule ────────────────────────────────────────────────────────────
   if (reschedule_date) {
     const rescheduledTo = new Date(reschedule_date).toLocaleString('en-IN', {
+      timeZone: IST_TIMEZONE,
       day: 'numeric', month: 'short', year: 'numeric',
       hour: '2-digit', minute: '2-digit', hour12: true,
     })
@@ -276,8 +278,8 @@ export async function DELETE(
     .eq('lead_id', demo.lead_id)
 
   // Return lead to SDR follow-up queue — status=call_again with today as callback_date
-  // so it appears in the SDR's Follow-up Queue immediately
-  const todayDate = new Date().toISOString().split('T')[0]
+  // so it appears in the SDR's Follow-up Queue immediately (IST calendar day)
+  const todayDate = toISTDateString()
   await supabase
     .from('leads')
     .update({

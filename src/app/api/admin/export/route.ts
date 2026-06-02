@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { toISTDateString } from '@/lib/utils'
 
 // GET /api/admin/export — download full lead log as CSV (admin only)
 export async function GET(req: NextRequest) {
@@ -105,7 +106,7 @@ export async function GET(req: NextRequest) {
   })
 
   const csv = [header.join(','), ...rows].join('\n')
-  const now = new Date().toISOString().split('T')[0]
+  const now = toISTDateString()   // IST calendar day for the export filename
 
   return new NextResponse(csv, {
     status: 200,

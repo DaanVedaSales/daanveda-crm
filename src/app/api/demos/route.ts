@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { toISTDateString } from '@/lib/utils'
 
 // POST /api/demos — book demo + handoff (SDR only)
 // closer_id is optional — if provided, assigns that closer; otherwise round-robin
@@ -132,7 +133,7 @@ export async function POST(req: NextRequest) {
       org_id,
       closer_id: assignedCloserId,
       stage: 'demo_scheduled',
-      first_demo_date: demo_date.split('T')[0],
+      first_demo_date: toISTDateString(new Date(demo_date)),
     })
 
   if (dealError) return NextResponse.json({ error: dealError.message }, { status: 500 })

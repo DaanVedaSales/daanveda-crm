@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { toISTDateString } from '@/lib/utils'
 
 // PATCH /api/deals/:id — update deal stage, follow-up, billing info
 export async function PATCH(
@@ -28,7 +29,7 @@ export async function PATCH(
   if (stage) {
     updatePayload.stage = stage
     if (['won', 'lost'].includes(stage)) {
-      updatePayload.date_won_lost = new Date().toISOString().split('T')[0]
+      updatePayload.date_won_lost = toISTDateString()  // IST calendar day
     }
   }
   if (deal_value !== undefined) updatePayload.deal_value = deal_value

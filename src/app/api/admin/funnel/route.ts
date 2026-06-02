@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
-import { getNowIST } from '@/lib/utils'
+import { toISTDateString, istDayStart, istDayEnd, istWeekStart } from '@/lib/utils'
 
 // GET /api/admin/funnel?period=today|week|month|all&start=YYYY-MM-DD&end=YYYY-MM-DD
 // Returns lead funnel stage counts for the admin dashboard.
@@ -27,31 +27,25 @@ export async function GET(request: Request) {
   const customStart = searchParams.get('start')
   const customEnd = searchParams.get('end')
 
-  // Build date range (mirrors team/stats logic).
-  // IST-based — server runs UTC, business operates in IST (UTC+5:30), so "today"/
-  // "week"/"month" boundaries must be computed against IST wall-clock.
-  const now = getNowIST()
+  // Build date range — in IST (business timezone); server runs UTC.
+  // Mirrors /api/team/stats exactly so the funnel and stats agree on the same dashboard.
+  const nowIso = new Date().toISOString()   // real current instant (end-of-range "now")
+  const istToday = toISTDateString()        // 'YYYY-MM-DD' in IST
   let rangeStart: string | null = null
   let rangeEnd: string | null = null
 
   if (period === 'custom' && customStart && customEnd) {
-    rangeStart = customStart
-    rangeEnd = customEnd + 'T23:59:59.999Z'
+    rangeStart = istDayStart(customStart)
+    rangeEnd = istDayEnd(customEnd)
   } else if (period === 'today') {
-    const d = now.toISOString().split('T')[0]
-    rangeStart = d + 'T00:00:00.000Z'
-    rangeEnd   = d + 'T23:59:59.999Z'
+    rangeStart = istDayStart(istToday)
+    rangeEnd = istDayEnd(istToday)
   } else if (period === 'week') {
-    const day = now.getDay() === 0 ? 6 : now.getDay() - 1
-    const monday = new Date(now)
-    monday.setDate(now.getDate() - day)
-    rangeStart = monday.toISOString().split('T')[0] + 'T00:00:00.000Z'
-    rangeEnd   = now.toISOString()
+    rangeStart = istDayStart(istWeekStart())
+    rangeEnd = nowIso
   } else if (period === 'month') {
-    const y = now.getFullYear()
-    const m = String(now.getMonth() + 1).padStart(2, '0')
-    rangeStart = `${y}-${m}-01T00:00:00.000Z`
-    rangeEnd   = now.toISOString()
+    rangeStart = istDayStart(`${istToday.slice(0, 7)}-01`)
+    rangeEnd = nowIso
   }
   // period === 'all' → no date filter
 

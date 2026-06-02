@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import TopBar from '@/components/layout/TopBar'
-import { formatCurrency, getWorkingDaysElapsed, getNowIST } from '@/lib/utils'
+import { formatCurrency, getWorkingDaysElapsed, getNowIST, toISTDateString, istDayStart, istDayEnd, IST_TIMEZONE } from '@/lib/utils'
 
 export default async function CloserDashboardPage() {
   const supabase = createClient()
@@ -44,6 +44,7 @@ export default async function CloserDashboardPage() {
   const year         = now.getFullYear()
   const daysElapsed  = getWorkingDaysElapsed(year, month, now)
   const monthStart   = `${year}-${String(month).padStart(2, '0')}-01`
+  const monthStartTs = istDayStart(monthStart)  // IST month start for timestamptz columns
   const today        = `${year}-${String(month).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
   const sevenDaysLater = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
   const weekEnd = `${sevenDaysLater.getFullYear()}-${String(sevenDaysLater.getMonth() + 1).padStart(2, '0')}-${String(sevenDaysLater.getDate()).padStart(2, '0')}`
@@ -54,7 +55,7 @@ export default async function CloserDashboardPage() {
       .not('stage', 'in', '("won","lost","ghosted","converted")')
       .or('removed_from_board.is.null,removed_from_board.eq.false'),
     supabase.from('demos').select('id', { count: 'exact', head: true }).eq('closer_id', profile.id)
-      .gte('demo_date', `${today}T00:00:00`).lte('demo_date', `${today}T23:59:59`)
+      .gte('demo_date', istDayStart(today)).lte('demo_date', istDayEnd(today))
       .in('status', ['scheduled', 'rescheduled']),
     supabase.from('deals').select('id', { count: 'exact', head: true }).eq('closer_id', profile.id)
       .lte('next_follow_up', today).not('stage', 'in', '("won","lost","ghosted")'),
@@ -62,16 +63,16 @@ export default async function CloserDashboardPage() {
       .select('id, demo_date, organization:organizations(name), sdr:users!demos_sdr_id_fkey(name)')
       .eq('closer_id', profile.id)
       .in('status', ['scheduled', 'rescheduled'])
-      .gte('demo_date', `${today}T00:00:00`)
-      .lte('demo_date', `${weekEnd}T23:59:59`)
+      .gte('demo_date', istDayStart(today))
+      .lte('demo_date', istDayEnd(weekEnd))
       .order('demo_date', { ascending: true })
       .limit(8),
     // Demos assigned to this closer this month
     supabase.from('demos').select('id', { count: 'exact', head: true })
-      .eq('closer_id', profile.id).eq('is_deleted', false).gte('created_at', monthStart),
+      .eq('closer_id', profile.id).eq('is_deleted', false).gte('created_at', monthStartTs),
     // Terminal outcomes for win rate calculation
     supabase.from('deals').select('id', { count: 'exact', head: true })
-      .eq('closer_id', profile.id).in('stage', ['lost', 'ghosted']).gte('updated_at', monthStart),
+      .eq('closer_id', profile.id).in('stage', ['lost', 'ghosted']).gte('updated_at', monthStartTs),
   ])
 
   const revenueWon       = (wonRes.data ?? []).reduce((s, d) => s + (d.deal_value ?? 0), 0)
@@ -288,9 +289,9 @@ export default async function CloserDashboardPage() {
             <div className="divide-y divide-[#F1F5F9]">
               {upcomingDemos.map((demo: any) => {
                 const demoDate  = new Date(demo.demo_date)
-                const isToday   = demoDate.toISOString().split('T')[0] === today
-                const dayLabel  = isToday ? 'Today' : demoDate.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })
-                const timeLabel = demoDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
+                const isToday   = toISTDateString(demoDate) === today
+                const dayLabel  = isToday ? 'Today' : demoDate.toLocaleDateString('en-IN', { timeZone: IST_TIMEZONE, weekday: 'short', day: 'numeric', month: 'short' })
+                const timeLabel = demoDate.toLocaleTimeString('en-IN', { timeZone: IST_TIMEZONE, hour: '2-digit', minute: '2-digit', hour12: true })
                 return (
                   <div key={demo.id} className="px-5 py-3.5 flex items-center justify-between hover:bg-[#F8FAFC] transition-colors">
                     <div>

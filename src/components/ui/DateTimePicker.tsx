@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { ChevronLeft, ChevronRight, Clock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -62,6 +63,8 @@ export default function DateTimePicker({ value, onChange, minDate, placeholder =
   const [viewMonth, setViewMonth] = useState(date ? parseInt(date.split('-')[1]) - 1 : today.getMonth())
 
   const ref = useRef<HTMLDivElement>(null)
+  const popoverRef = useRef<HTMLDivElement>(null)
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null)
 
   // Sync external value changes
   useEffect(() => {
@@ -76,14 +79,44 @@ export default function DateTimePicker({ value, onChange, minDate, placeholder =
     }
   }, [value])
 
-  // Close on outside click
+  // Close on outside click (trigger and the portaled popover are separate DOM subtrees)
   useEffect(() => {
     function handle(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+      const t = e.target as Node
+      if (ref.current?.contains(t)) return
+      if (popoverRef.current?.contains(t)) return
+      setOpen(false)
     }
     if (open) document.addEventListener('mousedown', handle)
     return () => document.removeEventListener('mousedown', handle)
   }, [open])
+
+  // Position the portaled popover against the trigger; flip up / clamp to viewport,
+  // and follow the trigger when an ancestor (modal/panel) scrolls.
+  const reposition = useCallback(() => {
+    const el = ref.current
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    const WIDTH = 320, GAP = 6
+    const estHeight = popoverRef.current?.offsetHeight || 440
+    let left = r.left
+    if (left + WIDTH > window.innerWidth - 8) left = Math.max(8, window.innerWidth - WIDTH - 8)
+    const spaceBelow = window.innerHeight - r.bottom
+    const openUp = spaceBelow < estHeight + GAP && r.top > spaceBelow
+    const top = openUp ? Math.max(8, r.top - GAP - estHeight) : r.bottom + GAP
+    setCoords({ top, left })
+  }, [])
+
+  useLayoutEffect(() => {
+    if (!open) { setCoords(null); return }
+    reposition()
+    window.addEventListener('scroll', reposition, true)
+    window.addEventListener('resize', reposition)
+    return () => {
+      window.removeEventListener('scroll', reposition, true)
+      window.removeEventListener('resize', reposition)
+    }
+  }, [open, reposition])
 
   function emit(d: string, h: number, m: number, ap: 'AM' | 'PM') {
     const iso = buildISOString(d, h, m, ap)
@@ -167,11 +200,17 @@ export default function DateTimePicker({ value, onChange, minDate, placeholder =
         <span className="flex-1 truncate">{displayLabel}</span>
       </button>
 
-      {/* Popover */}
-      {open && (
+      {/* Popover — portaled to <body> so it escapes modal/panel overflow clipping */}
+      {open && typeof document !== 'undefined' && createPortal(
         <div
-          className="absolute top-full left-0 mt-1.5 z-50 bg-white rounded-2xl border border-[#E2E8F0] shadow-xl w-[320px]"
-          style={{ boxShadow: '0 8px 32px rgba(15,23,42,0.12)' }}
+          ref={popoverRef}
+          className="fixed z-[100] bg-white rounded-2xl border border-[#E2E8F0] shadow-xl w-[320px]"
+          style={{
+            top: coords?.top ?? -9999,
+            left: coords?.left ?? -9999,
+            visibility: coords ? 'visible' : 'hidden',
+            boxShadow: '0 8px 32px rgba(15,23,42,0.12)',
+          }}
         >
           {/* ── Calendar ─────────────────────────────────── */}
           <div className="p-4 border-b border-[#F1F5F9]">
@@ -322,7 +361,8 @@ export default function DateTimePicker({ value, onChange, minDate, placeholder =
               {date ? `Confirm — ${displayLabel}` : 'Select a date first'}
             </button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )

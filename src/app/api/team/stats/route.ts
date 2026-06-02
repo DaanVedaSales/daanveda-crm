@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { toISTDateString, istDayStart, istDayEnd, istWeekStart } from '@/lib/utils'
 
 // GET /api/team/stats?period=today|week|month|all&start=YYYY-MM-DD&end=YYYY-MM-DD
 // Returns rich per-person stats for SDRs and Closers. Admin-only.
@@ -23,30 +24,24 @@ export async function GET(request: Request) {
   const customStart = searchParams.get('start')
   const customEnd = searchParams.get('end')
 
-  // Compute date range bounds
-  const now = new Date()
+  // Compute date range bounds — in IST (business timezone); server runs UTC.
+  const nowIso = new Date().toISOString()   // real current instant (end-of-range "now")
+  const istToday = toISTDateString()        // 'YYYY-MM-DD' in IST
   let rangeStart: string | null = null
   let rangeEnd: string | null = null
 
   if (period === 'custom' && customStart && customEnd) {
-    rangeStart = customStart
-    rangeEnd = customEnd + 'T23:59:59.999Z'
+    rangeStart = istDayStart(customStart)
+    rangeEnd = istDayEnd(customEnd)
   } else if (period === 'today') {
-    const d = now.toISOString().split('T')[0]
-    rangeStart = d + 'T00:00:00.000Z'
-    rangeEnd = d + 'T23:59:59.999Z'
+    rangeStart = istDayStart(istToday)
+    rangeEnd = istDayEnd(istToday)
   } else if (period === 'week') {
-    // Monday of this week
-    const day = now.getDay() === 0 ? 6 : now.getDay() - 1 // Mon = 0
-    const monday = new Date(now)
-    monday.setDate(now.getDate() - day)
-    rangeStart = monday.toISOString().split('T')[0] + 'T00:00:00.000Z'
-    rangeEnd = now.toISOString()
+    rangeStart = istDayStart(istWeekStart())
+    rangeEnd = nowIso
   } else if (period === 'month') {
-    const y = now.getFullYear()
-    const m = String(now.getMonth() + 1).padStart(2, '0')
-    rangeStart = `${y}-${m}-01T00:00:00.000Z`
-    rangeEnd = now.toISOString()
+    rangeStart = istDayStart(`${istToday.slice(0, 7)}-01`)
+    rangeEnd = nowIso
   }
   // period === 'all' → rangeStart/rangeEnd stay null (no date filter)
 
@@ -245,8 +240,8 @@ export async function GET(request: Request) {
         .in('stage', ['follow_up', 'negotiation'])
         .eq('removed_from_board', false)
 
-      // 7. Follows on track (next_follow_up >= today)
-      const todayStr = now.toISOString().split('T')[0]
+      // 7. Follows on track (next_follow_up >= today, IST)
+      const todayStr = toISTDateString()
       const { count: followsOnTrack } = await supabase
         .from('deals')
         .select('id', { count: 'exact', head: true })

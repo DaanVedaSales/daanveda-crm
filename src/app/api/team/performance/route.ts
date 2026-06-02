@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
-import { getNowIST } from '@/lib/utils'
+import { toISTDateString, istDayStart } from '@/lib/utils'
 
 // ── Commission structures ──────────────────────────────────────────────────────
 //
@@ -40,10 +40,8 @@ export async function GET() {
   const supabase = createServiceClient()
 
   // IST-based month boundary — server runs UTC, business operates in IST (UTC+5:30)
-  const now = getNowIST()
-  const month = now.getMonth() + 1
-  const year = now.getFullYear()
-  const monthStart = `${year}-${String(month).padStart(2, '0')}-01`
+  const monthStart   = `${toISTDateString().slice(0, 7)}-01`  // for date columns (date_won_lost)
+  const monthStartTs = istDayStart(monthStart)                 // for timestamptz columns (created_at)
 
   const { data: members } = await supabase
     .from('users')
@@ -66,7 +64,7 @@ export async function GET() {
           .from('demos')
           .select('id', { count: 'exact', head: true })
           .eq('sdr_id', member.id)
-          .gte('created_at', monthStart)
+          .gte('created_at', monthStartTs)
 
         demos_this_month = count ?? 0
         const demoTarget = member.monthly_demo_target ?? 0
@@ -78,7 +76,7 @@ export async function GET() {
           .select('id')
           .eq('sdr_id', member.id)
           .eq('is_deleted', false)
-          .gte('created_at', monthStart)
+          .gte('created_at', monthStartTs)
 
         const sdrDemoIds = (sdrDemos ?? []).map((d: { id: string }) => d.id)
 

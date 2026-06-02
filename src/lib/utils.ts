@@ -51,6 +51,37 @@ export function getNowIST(): Date {
   return new Date(new Date().getTime() + (5.5 * 60 * 60 * 1000))
 }
 
+// ── IST helpers (server-side) ────────────────────────────────────────────────
+// The business runs in IST; Vercel servers run UTC. Use these so that "today",
+// day/week/month boundaries, and date-typed fields are computed in IST.
+// NOTE: absolute timestamps (created_at/updated_at/deleted_at) must stay
+// `new Date().toISOString()` (UTC) — they record the correct instant and render
+// as IST on the client. Only convert civil-date semantics with these helpers.
+export const IST_TIMEZONE = 'Asia/Kolkata'
+
+// 'YYYY-MM-DD' calendar date in IST for an instant (default: now).
+// Robust regardless of the server's own timezone (uses Intl, not the runtime TZ).
+export function toISTDateString(instant: Date = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: IST_TIMEZONE }).format(instant)
+}
+
+// IST day boundaries as timestamptz literals — the +05:30 offset makes Postgres
+// compare the correct absolute instant for an IST calendar day.
+export function istDayStart(dateStr: string): string {
+  return `${dateStr}T00:00:00.000+05:30`
+}
+export function istDayEnd(dateStr: string): string {
+  return `${dateStr}T23:59:59.999+05:30`
+}
+
+// Monday (IST) of the week containing `instant`, as 'YYYY-MM-DD'.
+export function istWeekStart(instant: Date = new Date()): string {
+  const d = new Date(`${toISTDateString(instant)}T12:00:00Z`) // noon UTC of the IST date — avoids day-roll
+  const offset = d.getUTCDay() === 0 ? 6 : d.getUTCDay() - 1   // days since Monday
+  d.setUTCDate(d.getUTCDate() - offset)
+  return toISTDateString(d)
+}
+
 export function getWorkingDaysElapsed(year: number, month: number, today?: Date): number {
   const todayDate = today ?? new Date()
   const start = new Date(year, month - 1, 1)

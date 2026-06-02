@@ -354,7 +354,11 @@ export default function ActionsPage() {
                             <XCircle className="w-3.5 h-3.5" strokeWidth={2} /> No Show
                           </button>
                           <button
-                            onClick={() => setActionState(p => ({ ...p, [demo.id]: 'reschedule' }))}
+                            onClick={() => {
+                              setActionState(p => ({ ...p, [demo.id]: 'reschedule' }))
+                              // Pre-fill the picker with the demo's current date/time
+                              setRescheduleDate(p => (p[demo.id] ? p : { ...p, [demo.id]: demo.demo_date }))
+                            }}
                             className="btn-ghost flex items-center gap-1.5"
                           >
                             <RefreshCw className="w-3.5 h-3.5" strokeWidth={2} /> Reschedule

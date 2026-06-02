@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
+import { toISTDateString, istDayStart, istDayEnd, IST_TIMEZONE } from '@/lib/utils'
 
 // POST /api/email/daily-summary
 // Called by pg_cron at 9AM IST (3:30 AM UTC) Mon–Sat
@@ -16,7 +17,7 @@ export async function POST(req: NextRequest) {
   }
 
   const supabase = createServiceClient()
-  const today = new Date().toISOString().split('T')[0]
+  const today = toISTDateString()   // IST calendar day
 
   // Get all active users
   const { data: users } = await supabase
@@ -39,7 +40,7 @@ export async function POST(req: NextRequest) {
           const { count: demos } = await supabase
             .from('demos').select('id', { count: 'exact', head: true })
             .eq('sdr_id', user.id)
-            .gte('created_at', `${today.slice(0, 7)}-01`)
+            .gte('created_at', istDayStart(`${today.slice(0, 7)}-01`))
 
           const { count: followups } = await supabase
             .from('leads').select('id', { count: 'exact', head: true })
@@ -55,8 +56,8 @@ export async function POST(req: NextRequest) {
           const { data: todayDemos } = await supabase
             .from('demos').select('id, demo_date, organization:organizations(name)')
             .eq('closer_id', user.id)
-            .gte('demo_date', `${today}T00:00:00`)
-            .lte('demo_date', `${today}T23:59:59`)
+            .gte('demo_date', istDayStart(today))
+            .lte('demo_date', istDayEnd(today))
 
           const { count: overdue } = await supabase
             .from('deals').select('id', { count: 'exact', head: true })
@@ -135,7 +136,7 @@ function buildCloserMorningEmail(name: string, demos: any[], overdue: number): s
       ${demos.map(d => `
         <div style="background: #F8FAFC; border-radius: 8px; padding: 12px 16px; margin-bottom: 8px;">
           <p style="margin: 0; font-weight: 600; font-size: 14px; color: #0F172A;">${(d.organization as any)?.name ?? 'Unknown'}</p>
-          <p style="margin: 4px 0 0; font-size: 12px; color: #64748B;">${new Date(d.demo_date).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</p>
+          <p style="margin: 4px 0 0; font-size: 12px; color: #64748B;">${new Date(d.demo_date).toLocaleTimeString('en-IN', { timeZone: IST_TIMEZONE, hour: '2-digit', minute: '2-digit' })}</p>
         </div>
       `).join('')}
 
