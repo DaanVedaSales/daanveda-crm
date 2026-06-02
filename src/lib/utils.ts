@@ -45,12 +45,18 @@ export function getDailyPace(monthlyTarget: number): number {
   return monthlyTarget / 26
 }
 
-export function getWorkingDaysElapsed(year: number, month: number): number {
-  const today = new Date()
+// Returns a Date object representing the current time in IST (UTC+5:30).
+// Use this in all server-side date calculations to avoid UTC/IST timezone drift.
+export function getNowIST(): Date {
+  return new Date(new Date().getTime() + (5.5 * 60 * 60 * 1000))
+}
+
+export function getWorkingDaysElapsed(year: number, month: number, today?: Date): number {
+  const todayDate = today ?? new Date()
   const start = new Date(year, month - 1, 1)
   let count = 0
   const d = new Date(start)
-  while (d <= today && d.getMonth() === month - 1) {
+  while (d <= todayDate && d.getMonth() === month - 1) {
     const day = d.getDay()
     if (day !== 0) count++ // exclude Sundays; Mon–Sat count
     d.setDate(d.getDate() + 1)

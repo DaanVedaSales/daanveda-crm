@@ -38,7 +38,7 @@ export default function PayoutSummary() {
       <div className="px-5 py-4 border-b border-[#F1F5F9] flex items-center justify-between">
         <div>
           <h2 className="text-sm font-semibold text-[#0F172A]">Team Payout Estimate</h2>
-          <p className="text-xs text-[#94A3B8] mt-0.5">Based on current month performance · SDR ₹500/demo · Closer 7% revenue</p>
+          <p className="text-xs text-[#94A3B8] mt-0.5">Based on current month performance · SDR ₹200–₹500/won deal · Closer tier-based</p>
         </div>
         <Link href="/admin/team" className="text-xs text-[#1A56DB] hover:underline font-medium">
           Manage team →

@@ -376,6 +376,74 @@ function AggChip({ label, value, accent }: { label: string; value: string | numb
   )
 }
 
+// ── Conversion Funnel ───────────────────────────────────────────────────────────
+interface FunnelData {
+  leads_assigned: { total: number; admin_pool: number; sdr_manual: number; sdr_claim: number }
+  demos_booked: number
+  demos_attended: number
+  deals_won: number
+  deals_lost_ghosted: number
+}
+
+function FunnelStrip({ funnel, loading, periodLabel }: { funnel: FunnelData | null; loading: boolean; periodLabel: string }) {
+  const convPct = (num: number, den: number) => (den > 0 ? Math.round((num / den) * 100) : null)
+
+  const stages = funnel
+    ? [
+        { label: 'Leads Assigned', value: funnel.leads_assigned.total, color: '#1A56DB', conv: null as number | null },
+        { label: 'Demos Booked', value: funnel.demos_booked, color: '#7C3AED', conv: convPct(funnel.demos_booked, funnel.leads_assigned.total) },
+        { label: 'Demos Attended', value: funnel.demos_attended, color: '#0891B2', conv: convPct(funnel.demos_attended, funnel.demos_booked) },
+        { label: 'Deals Won', value: funnel.deals_won, color: '#059669', conv: convPct(funnel.deals_won, funnel.demos_attended) },
+      ]
+    : []
+
+  return (
+    <div className="bg-white rounded-2xl border border-[#E2E8F0] overflow-hidden"
+         style={{ boxShadow: '0 1px 4px rgba(15,23,42,0.06)' }}>
+      <div className="px-5 py-3 border-b border-[#F1F5F9] flex items-center justify-between">
+        <p className="text-[11px] font-semibold text-[#94A3B8] uppercase tracking-wider">Conversion Funnel</p>
+        <span className="text-[11px] text-[#94A3B8]">{periodLabel}</span>
+      </div>
+
+      {loading || !funnel ? (
+        <div className="p-5"><div className="h-16 bg-[#F1F5F9] rounded skeleton" /></div>
+      ) : (
+        <div className="p-5">
+          <div className="flex items-stretch gap-2">
+            {stages.map((s, i) => (
+              <div key={s.label} className="flex items-stretch gap-2 flex-1">
+                <div className="flex-1 rounded-xl border border-[#F1F5F9] bg-[#F8FAFC] px-4 py-3">
+                  <p className="text-[22px] font-bold tabular-nums leading-none" style={{ color: s.color }}>{s.value}</p>
+                  <p className="text-[11px] text-[#64748B] mt-1.5">{s.label}</p>
+                  {s.conv !== null && (
+                    <p className="text-[10px] text-[#94A3B8] mt-0.5">{s.conv}% of previous</p>
+                  )}
+                </div>
+                {i < stages.length - 1 && (
+                  <div className="flex items-center text-[#CBD5E1]">
+                    <ChevronRight className="w-4 h-4" strokeWidth={2} />
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Lead source breakdown (of assigned leads) + lost/ghosted */}
+          <div className="flex items-center justify-between mt-4 pt-3 border-t border-[#F1F5F9] flex-wrap gap-2">
+            <div className="flex items-center gap-4 flex-wrap">
+              <span className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wider">Lead Sources</span>
+              <span className="text-[11px] text-[#64748B]">Admin Pool <b className="text-[#0F172A] tabular-nums">{funnel.leads_assigned.admin_pool}</b></span>
+              <span className="text-[11px] text-[#64748B]">SDR Manual <b className="text-[#0F172A] tabular-nums">{funnel.leads_assigned.sdr_manual}</b></span>
+              <span className="text-[11px] text-[#64748B]">SDR Claim <b className="text-[#0F172A] tabular-nums">{funnel.leads_assigned.sdr_claim}</b></span>
+            </div>
+            <span className="text-[11px] text-[#64748B]">Lost / Ghosted <b className="text-[#EF4444] tabular-nums">{funnel.deals_lost_ghosted}</b></span>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Main Dashboard ─────────────────────────────────────────────────────────────
 export default function AdminDashboardPage() {
   const [period, setPeriod] = useState<Period>('month')
@@ -385,6 +453,7 @@ export default function AdminDashboardPage() {
   const [sdrs, setSdrs] = useState<SdrStat[]>([])
   const [closers, setClosers] = useState<CloserStat[]>([])
   const [orgKpis, setOrgKpis] = useState<OrgKpis>({ totalLeads: 0, unassignedLeads: 0, totalRevTarget: 0 })
+  const [funnel, setFunnel] = useState<FunnelData | null>(null)
   const [loading, setLoading] = useState(true)
 
   const [selectedSdr, setSelectedSdr] = useState<SdrStat | null>(null)
@@ -402,8 +471,9 @@ export default function AdminDashboardPage() {
       params.set('end', customEnd)
     }
 
-    const [statsRes, leadsRes, usersRes] = await Promise.all([
+    const [statsRes, funnelRes, leadsRes, usersRes] = await Promise.all([
       fetch(`/api/team/stats?${params}`).then(r => r.json()),
+      fetch(`/api/admin/funnel?${params}`).then(r => r.json()),
       supabase.from('leads').select('id, status, phase'),
       supabase.from('users')
         .select('id, role, monthly_revenue_target, is_active')
@@ -412,6 +482,7 @@ export default function AdminDashboardPage() {
 
     setSdrs((statsRes.sdrs ?? []).sort((a: SdrStat, b: SdrStat) => (a.achievement_pct ?? 999) - (b.achievement_pct ?? 999)))
     setClosers((statsRes.closers ?? []).sort((a: CloserStat, b: CloserStat) => (b.revenue_won ?? 0) - (a.revenue_won ?? 0)))
+    setFunnel(funnelRes?.leads_assigned ? funnelRes : null)
 
     const leads = leadsRes.data ?? []
     const users = usersRes.data ?? []
@@ -472,6 +543,9 @@ export default function AdminDashboardPage() {
           <KpiCard label="Revenue Won" value={formatCurrency(totalRevenue)} subtitle={PERIOD_LABELS[period]} accentColor="#059669" />
           <KpiCard label="Revenue Target" value={formatCurrency(orgKpis.totalRevTarget)} subtitle="Team monthly" accentColor="#0891B2" />
         </div>
+
+        {/* ── Conversion Funnel ─────────────────────────────────────────────── */}
+        <FunnelStrip funnel={funnel} loading={loading} periodLabel={PERIOD_LABELS[period]} />
 
         {/* ── SDR Section ───────────────────────────────────────────────────── */}
         <div className="space-y-3">

@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import TopBar from '@/components/layout/TopBar'
-import { formatCurrency, getWorkingDaysElapsed } from '@/lib/utils'
+import { formatCurrency, getWorkingDaysElapsed, getNowIST } from '@/lib/utils'
 
 export default async function CloserDashboardPage() {
   const supabase = createClient()
@@ -38,15 +38,15 @@ export default async function CloserDashboardPage() {
     )
   }
 
-  const now          = new Date()
+  // Use IST for all date calculations — server runs UTC, business operates in IST (UTC+5:30)
+  const now          = getNowIST()
   const month        = now.getMonth() + 1
   const year         = now.getFullYear()
-  const daysElapsed  = getWorkingDaysElapsed(year, month)
+  const daysElapsed  = getWorkingDaysElapsed(year, month, now)
   const monthStart   = `${year}-${String(month).padStart(2, '0')}-01`
-  const today        = now.toISOString().split('T')[0]
-  const sevenDaysLater = new Date(now)
-  sevenDaysLater.setDate(sevenDaysLater.getDate() + 7)
-  const weekEnd = sevenDaysLater.toISOString().split('T')[0]
+  const today        = `${year}-${String(month).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  const sevenDaysLater = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
+  const weekEnd = `${sevenDaysLater.getFullYear()}-${String(sevenDaysLater.getMonth() + 1).padStart(2, '0')}-${String(sevenDaysLater.getDate()).padStart(2, '0')}`
 
   const [wonRes, pipelineRes, todayDemosRes, followupsRes, upcomingDemosRes, demosAssignedRes, lostGhostedRes] = await Promise.all([
     supabase.from('deals').select('deal_value').eq('closer_id', profile.id).in('stage', ['won', 'converted']).gte('date_won_lost', monthStart),
@@ -94,10 +94,27 @@ export default async function CloserDashboardPage() {
   const progressPercent = target > 0 ? Math.min((revenueWon / target) * 100, 100) : 0
   const achievementPct  = target > 0 ? Math.round((revenueWon / target) * 100) : 0
 
-  // Dynamic commission — 7% of revenue × achievement multiplier
-  // Calculated inline; does not rely on commissions table (which requires manual admin population)
-  const commMultiplier      = achievementPct >= 120 ? 1.5 : achievementPct >= 100 ? 1.25 : achievementPct >= 70 ? 1.0 : 0
-  const estimatedCommission = Math.round(revenueWon * 0.07 * commMultiplier)
+  // Tier-based commission — grouped by deal_value (Base <₹60K, Mid ₹60K-₹1.2L, Custom ≥₹1.2L)
+  let basePlanRev = 0, midPlanRev = 0, customPlanRev = 0
+  for (const deal of (wonRes.data ?? []) as { deal_value: number | null }[]) {
+    const v = deal.deal_value ?? 0
+    if (v < 60000)       basePlanRev   += v
+    else if (v < 120000) midPlanRev    += v
+    else                 customPlanRev += v
+  }
+
+  const baseRate   = achievementPct < 70 ? 0 : achievementPct < 80 ? 0.01 : achievementPct < 100 ? 0.02 : achievementPct < 120 ? 0.04 : 0.06
+  const midRate    = achievementPct < 70 ? 0 : achievementPct < 80 ? 0.02 : achievementPct < 100 ? 0.03 : achievementPct < 120 ? 0.06 : 0.08
+  const customRate = achievementPct < 70 ? 0 : achievementPct < 80 ? 0.04 : achievementPct < 100 ? 0.05 : achievementPct < 120 ? 0.08 : 0.10
+
+  const mainCommission = basePlanRev * baseRate + midPlanRev * midRate + customPlanRev * customRate
+
+  // 130%+ accelerator: 5% on revenue above 120% of target
+  const acceleratorBase = target > 0 ? revenueWon - (target * 1.2) : 0
+  const accelerator     = achievementPct >= 130 && acceleratorBase > 0
+    ? Math.round(acceleratorBase * 0.05) : 0
+
+  const estimatedCommission = Math.round(mainCommission + accelerator)
 
   const zoneLabel =
     achievementPct >= 120 ? 'Accelerator Zone'
@@ -147,7 +164,7 @@ export default async function CloserDashboardPage() {
               >
                 {formatCurrency(estimatedCommission)}
               </p>
-              <p className="text-[10px] text-[#94A3B8] mt-1">7% of revenue · locked by admin at month end</p>
+              <p className="text-[10px] text-[#94A3B8] mt-1">Tier-based commission · locked by admin at month end</p>
             </div>
           </div>
 

@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import TopBar from '@/components/layout/TopBar'
 import KpiCard from '@/components/dashboard/KpiCard'
-import { getWorkingDaysElapsed } from '@/lib/utils'
+import { getWorkingDaysElapsed, getNowIST } from '@/lib/utils'
 
 export default async function SDRDashboardPage() {
   const supabase = createClient()
@@ -19,12 +19,13 @@ export default async function SDRDashboardPage() {
 
   const targetsNotSet = !profile.monthly_demo_target
 
-  const now         = new Date()
+  // Use IST for all date calculations — server runs UTC, business operates in IST (UTC+5:30)
+  const now         = getNowIST()
   const month       = now.getMonth() + 1
   const year        = now.getFullYear()
-  const daysElapsed = getWorkingDaysElapsed(year, month)
+  const daysElapsed = getWorkingDaysElapsed(year, month, now)
   const monthStart  = `${year}-${String(month).padStart(2, '0')}-01`
-  const today       = now.toISOString().split('T')[0]
+  const today       = `${year}-${String(month).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
 
   // Fetch demos with IDs so we can run quality + pipeline queries downstream
   const [demosRes, leadsRes, followupsRes, noShowRes] = await Promise.all([
@@ -90,15 +91,18 @@ export default async function SDRDashboardPage() {
   // ── Derived quality metrics (only meaningful with ≥ 3 demos) ─────────────
   const noShowPct      = demosBooked >= 3 ? Math.round((noShowCount / demosBooked) * 100) : null
   const unqualifiedPct = demosBooked >= 3 ? Math.round((unqualifiedCount / demosBooked) * 100) : null
-  const coldToDemoPct  = outreachCount > 0 ? Math.round((demosBooked / outreachCount) * 100) : null
-
-  // ── Commission ────────────────────────────────────────────────────────────
-  const achievementPct = target > 0 ? Math.round((demosBooked / target) * 100) : 0
-  const sdrMultiplier  = achievementPct >= 120 ? 1.5 : achievementPct >= 100 ? 1.25 : achievementPct >= 70 ? 1.0 : 0
-  const sdrCommission  = Math.round(demosBooked * 500 * sdrMultiplier)
+  // Cold→Demo only meaningful when logged outreach ≥ demos booked (ratio >100% = SDR not logging calls)
+  const coldToDemoPct = (outreachCount > 0 && outreachCount >= demosBooked)
+    ? Math.round((demosBooked / outreachCount) * 100)
+    : null
 
   const wonDeals         = pipelineDeals.filter(d => d.stage === 'won')
   const negotiationDeals = pipelineDeals.filter(d => d.stage === 'negotiation')
+
+  // ── SDR commission: flat per-won-deal (₹200 if <₹1L, ₹500 if ≥₹1L — no multiplier) ──
+  const sdrCommission = wonDeals.reduce((total: number, d: any) => {
+    return total + ((d.deal_value ?? 0) >= 100000 ? 500 : 200)
+  }, 0)
 
   // ── Pace calculations ─────────────────────────────────────────────────────
   const dailyTarget     = target > 0 ? target / 26 : 0
@@ -257,7 +261,13 @@ export default async function SDRDashboardPage() {
                 <p className="text-[1.75rem] font-bold leading-none text-[#1A56DB]">
                   {coldToDemoPct !== null ? `${coldToDemoPct}%` : '—'}
                 </p>
-                <p className="text-[10px] text-[#94A3B8] mt-1.5">{outreachCount} outreach activities</p>
+                <p className="text-[10px] text-[#94A3B8] mt-1.5">
+                  {coldToDemoPct !== null
+                    ? `${outreachCount} outreach activities`
+                    : outreachCount === 0
+                    ? 'No outreach logged this month'
+                    : 'Log more outreach to activate'}
+                </p>
               </div>
             </div>
           </div>
@@ -319,7 +329,9 @@ export default async function SDRDashboardPage() {
                             ₹{(d.deal_value / 100000).toFixed(1)}L deal
                           </span>
                         )}
-                        <span className="text-[11px] font-semibold text-[#059669]">+₹500</span>
+                        <span className="text-[11px] font-semibold text-[#059669]">
+                          {(d.deal_value ?? 0) >= 100000 ? '+₹500' : '+₹200'}
+                        </span>
                       </div>
                     </div>
                   ))}

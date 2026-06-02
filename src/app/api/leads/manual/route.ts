@@ -123,7 +123,7 @@ export async function POST(req: NextRequest) {
     if (contact3Err) console.error('KDM3 contact creation failed:', contact3Err.message)
   }
 
-  // 3. Create lead assigned to the SDR
+  // 3. Create lead assigned to the SDR — mark as manually entered for funnel tracking
   const { data: lead, error: leadErr } = await supabase
     .from('leads')
     .insert({
@@ -131,6 +131,7 @@ export async function POST(req: NextRequest) {
       status: 'new',
       phase: 'sdr',
       assigned_to: profile.id,
+      source_type: 'sdr_manual',
     })
     .select()
     .single()

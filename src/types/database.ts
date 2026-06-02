@@ -445,6 +445,7 @@ export type Database = {
           phase: Database["public"]["Enums"]["lead_phase"]
           recycle_date: string | null
           recycle_reason: string | null
+          source_type: string
           status: Database["public"]["Enums"]["lead_status"]
           updated_at: string | null
         }
@@ -464,6 +465,7 @@ export type Database = {
           phase?: Database["public"]["Enums"]["lead_phase"]
           recycle_date?: string | null
           recycle_reason?: string | null
+          source_type?: string
           status?: Database["public"]["Enums"]["lead_status"]
           updated_at?: string | null
         }
@@ -483,6 +485,7 @@ export type Database = {
           phase?: Database["public"]["Enums"]["lead_phase"]
           recycle_date?: string | null
           recycle_reason?: string | null
+          source_type?: string
           status?: Database["public"]["Enums"]["lead_status"]
           updated_at?: string | null
         }

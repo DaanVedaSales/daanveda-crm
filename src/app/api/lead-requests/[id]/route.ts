@@ -73,7 +73,7 @@ export async function PATCH(
       // Lead already exists — just approve the request (admin oversight)
       autoCreatedLeadId = existingLead.id
     } else {
-      // Create a new lead assigned to the SDR
+      // Create a new lead assigned to the SDR — mark as SDR claim for funnel tracking
       const { data: newLead, error: leadErr } = await supabase
         .from('leads')
         .insert({
@@ -82,6 +82,7 @@ export async function PATCH(
           phase: 'sdr',
           assigned_to: request.sdr_id,
           assigned_by: adminProfile.id,
+          source_type: 'sdr_claim',
         })
         .select('id')
         .single()

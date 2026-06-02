@@ -113,21 +113,50 @@ export const ACTIVITY_OUTCOMES = [
   { value: 'Other', label: '📝 Other' },
 ]
 
-// ─── Commission Tiers ────────────────────────────────────────────────────────
-// Two-dimensional: plan tier × achievement %
+// ─── Commission Structure (reference) ────────────────────────────────────────
+// NOTE: the live payout math is computed inline in the SDR/Closer dashboards and
+// /api/team/performance. These constants mirror that structure for reference and
+// must be kept in sync with it.
 
+// SDR — flat per WON deal (no achievement multiplier):
+//   deal_value < ₹1L → ₹200/deal · deal_value ≥ ₹1L → ₹500/deal
+export const SDR_COMMISSION = {
+  threshold: 100000,
+  belowThreshold: 200,
+  atOrAboveThreshold: 500,
+}
+
+// Closer — plan tier (by deal_value) selects which rate column applies:
 export const COMMISSION_PLAN_TIERS = [
-  { label: '₹30K–₹60K', min: 30000, max: 60000, tier: 'base' },
+  { label: '< ₹60K', min: 0, max: 60000, tier: 'base' },
   { label: '₹60K–₹1.2L', min: 60000, max: 120000, tier: 'mid' },
-  { label: '₹1.2L+', min: 120000, max: Infinity, tier: 'premium' },
+  { label: '₹1.2L+', min: 120000, max: Infinity, tier: 'custom' },
 ]
 
-export const COMMISSION_ACHIEVEMENT_RATES = [
-  { label: '<70%', minPct: 0, maxPct: 70, multiplier: 0 },
-  { label: '70–99%', minPct: 70, maxPct: 100, multiplier: 1 },
-  { label: '100–119%', minPct: 100, maxPct: 120, multiplier: 1.25 },
-  { label: '120%+', minPct: 120, maxPct: Infinity, multiplier: 1.5 },
-]
+// Closer — rate = f(plan tier, achievement %); < 70% pays nothing.
+export const COMMISSION_TIER_RATES: Record<'base' | 'mid' | 'custom', { minPct: number; maxPct: number; rate: number }[]> = {
+  base: [
+    { minPct: 70, maxPct: 80, rate: 0.01 },
+    { minPct: 80, maxPct: 100, rate: 0.02 },
+    { minPct: 100, maxPct: 120, rate: 0.04 },
+    { minPct: 120, maxPct: Infinity, rate: 0.06 },
+  ],
+  mid: [
+    { minPct: 70, maxPct: 80, rate: 0.02 },
+    { minPct: 80, maxPct: 100, rate: 0.03 },
+    { minPct: 100, maxPct: 120, rate: 0.06 },
+    { minPct: 120, maxPct: Infinity, rate: 0.08 },
+  ],
+  custom: [
+    { minPct: 70, maxPct: 80, rate: 0.04 },
+    { minPct: 80, maxPct: 100, rate: 0.05 },
+    { minPct: 100, maxPct: 120, rate: 0.08 },
+    { minPct: 120, maxPct: Infinity, rate: 0.10 },
+  ],
+}
+
+// Closer — 130%+ accelerator: +5% on revenue above 120% of target.
+export const COMMISSION_ACCELERATOR = { minPct: 130, rate: 0.05, targetMultiple: 1.2 }
 
 // ─── Navigation ──────────────────────────────────────────────────────────────
 
