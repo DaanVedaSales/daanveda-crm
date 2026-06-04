@@ -7,6 +7,7 @@ import { createClient, createServiceClient } from '@/lib/supabase/server'
 // Accessible to all authenticated roles (sdr, closer, admin)
 
 export type OrgSearchStatus =
+  | 'banned'
   | 'active_client'
   | 'lost'
   | 'ghosted'
@@ -63,7 +64,7 @@ export async function GET(req: NextRequest) {
   const { data: orgs, error } = await supabase
     .from('organizations')
     .select(`
-      id, name, location, thematic_areas, is_client,
+      id, name, location, thematic_areas, is_client, is_banned,
       leads(
         id, phase, status, assigned_to,
         assigned_user:users!leads_assigned_to_fkey(id, name, role),
@@ -92,7 +93,7 @@ export async function GET(req: NextRequest) {
           supabase
             .from('organizations')
             .select(`
-              id, name, location, thematic_areas, is_client,
+              id, name, location, thematic_areas, is_client, is_banned,
               leads(
                 id, phase, status, assigned_to,
                 assigned_user:users!leads_assigned_to_fkey(id, name, role),
@@ -185,6 +186,11 @@ function deriveStatus(org: any, claimingSDRName: string | null): {
   deal_stage: string | null
 } {
   const leads: any[] = org.leads ?? []
+
+  // Banned takes absolute priority — surfaced as a do-not-contact warning above everything else
+  if (org.is_banned) {
+    return { status: 'banned', status_label: 'Banned — do not contact', assignee_name: null, assignee_role: null, deal_stage: null }
+  }
 
   if (org.is_client) {
     return { status: 'active_client', status_label: 'Active client', assignee_name: null, assignee_role: null, deal_stage: null }

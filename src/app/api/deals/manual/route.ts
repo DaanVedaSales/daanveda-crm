@@ -60,6 +60,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'demo_date is required when demo_status is scheduled' }, { status: 400 })
   }
 
+  // Block adding a deal for a banned organisation (do-not-contact)
+  const { data: bannedMatch } = await supabase
+    .from('organizations')
+    .select('id')
+    .ilike('name', org_name.trim())
+    .eq('is_banned', true)
+    .limit(1)
+  if (bannedMatch && bannedMatch.length > 0) {
+    return NextResponse.json({ error: 'This organisation is banned (do-not-contact) and cannot be added.' }, { status: 403 })
+  }
+
   // 1. Create organisation
   const { data: org, error: orgErr } = await supabase
     .from('organizations')

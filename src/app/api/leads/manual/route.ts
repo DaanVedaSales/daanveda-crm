@@ -51,6 +51,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'KDM (key decision maker) name is required' }, { status: 400 })
   }
 
+  // Block adding a lead for a banned organisation (do-not-contact)
+  const { data: bannedMatch } = await supabase
+    .from('organizations')
+    .select('id')
+    .ilike('name', org_name.trim())
+    .eq('is_banned', true)
+    .limit(1)
+  if (bannedMatch && bannedMatch.length > 0) {
+    return NextResponse.json({ error: 'This organisation is banned (do-not-contact) and cannot be added.' }, { status: 403 })
+  }
+
   // Parse thematic_areas — may be array or comma-separated string
   let thematicArr: string[] = []
   if (Array.isArray(thematic_areas)) thematicArr = thematic_areas.filter(Boolean)

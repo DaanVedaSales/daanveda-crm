@@ -5,6 +5,7 @@ import TopBar from '@/components/layout/TopBar'
 import { formatDate } from '@/lib/utils'
 import { Upload, Plus, FileText, Table2, X, Download } from 'lucide-react'
 import type { Dataset } from '@/types/database'
+import BannedOrgsSection from '@/components/crm/BannedOrgsSection'
 
 // The 25 database fields we accept in uploads
 const DB_FIELDS = [
@@ -619,6 +620,9 @@ export default function DatasetsPage() {
             </button>
           </div>
         </div>
+
+        {/* ── Banned organisations management ── */}
+        <BannedOrgsSection />
 
         {/* ── Upload panel ── */}
         {showUpload && (

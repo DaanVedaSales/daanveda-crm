@@ -408,6 +408,14 @@ export default function OrgSearchModal({ role, onClose }: OrgSearchModalProps) {
                       </div>
                     )}
 
+                    {/* ── Banned: do-not-contact warning (all roles, blocks all actions) ── */}
+                    {org.status === 'banned' && (
+                      <p className="mt-1.5 text-[11px] text-[#B91C1C] font-semibold flex items-center gap-1.5">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                        Banned organisation — do not contact. No actions are available.
+                      </p>
+                    )}
+
                     {/* ── SDR: Already claimed by another SDR ── */}
                     {role === 'sdr' && org.status === 'claim_pending' && (
                       <p className="mt-1.5 text-[11px] text-[#92400E] font-medium flex items-center gap-1.5">
@@ -459,7 +467,7 @@ export default function OrgSearchModal({ role, onClose }: OrgSearchModalProps) {
                     )}
 
                     {/* ── SDR: context notes for locked statuses ── */}
-                    {role === 'sdr' && !['in_lead_pool', 'in_database', 'claim_pending'].includes(org.status) && (
+                    {role === 'sdr' && !['in_lead_pool', 'in_database', 'claim_pending', 'banned'].includes(org.status) && (
                       <p className="mt-1 text-[10px] text-[#94A3B8] italic">
                         {org.status === 'active_client'  && 'This organisation is already a DaanVeda client.'}
                         {org.status === 'with_sdr'       && `Being worked by ${org.assignee_name ?? 'another SDR'}.`}

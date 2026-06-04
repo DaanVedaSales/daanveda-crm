@@ -499,7 +499,21 @@ function AddLeadModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
                 placeholder="Organisation name"
                 inputClassName="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20 focus:border-[#1A56DB]"
               />
-              {selectedOrg && selectedOrg.status !== 'in_database' && (
+              {selectedOrg?.status === 'banned' ? (
+                <div className="mt-2 flex items-start gap-1.5 bg-[#FEE2E2] border border-[#FCA5A5] rounded-lg px-2.5 py-2">
+                  <svg className="w-3.5 h-3.5 text-[#B91C1C] mt-0.5 shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+                  </svg>
+                  <div>
+                    <p className="text-[11px] font-semibold text-[#B91C1C]">
+                      This organisation is banned — do not contact
+                    </p>
+                    <p className="text-[10px] text-[#B91C1C] mt-0.5">
+                      Banned organisations cannot be added. Choose a different organisation.
+                    </p>
+                  </div>
+                </div>
+              ) : selectedOrg && selectedOrg.status !== 'in_database' ? (
                 <div className="mt-2 flex items-start gap-1.5 bg-[#FEF3C7] border border-[#FCD34D] rounded-lg px-2.5 py-2">
                   <svg className="w-3.5 h-3.5 text-[#92400E] mt-0.5 shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
@@ -514,7 +528,7 @@ function AddLeadModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
                     </p>
                   </div>
                 </div>
-              )}
+              ) : null}
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -746,7 +760,7 @@ function AddLeadModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
           <div className="flex gap-2 pt-1">
             <button
               type="submit"
-              disabled={saving || !orgName.trim() || !kdmName.trim()}
+              disabled={saving || !orgName.trim() || !kdmName.trim() || selectedOrg?.status === 'banned'}
               className="flex-1 py-2.5 bg-[#1A56DB] text-white text-sm font-medium rounded-xl hover:bg-[#1e40af] disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
             >
               {saving ? 'Adding...' : 'Add Lead →'}

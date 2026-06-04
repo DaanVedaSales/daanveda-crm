@@ -114,7 +114,7 @@ export default function ActionsPage() {
       .from('demos')
       .select(`
         id, demo_date, status, org_id, pain_point, demo_expectation, sdr_summary, sdr_interest_signal, post_demo_notes, reminder_sent,
-        organization:organizations(name, location, annual_revenue, team_size, thematic_areas, linkedin_url, url),
+        organization:organizations(name, location, annual_revenue, team_size, thematic_areas, linkedin_url, url, is_banned),
         sdr:users!demos_sdr_id_fkey(id, name),
         lead:leads(id, org_id)
       `)
@@ -124,7 +124,8 @@ export default function ActionsPage() {
       .gte('demo_date', new Date().toISOString().split('T')[0] + 'T00:00:00')
       .order('demo_date', { ascending: true })
 
-    const fetchedDemos = (data ?? []) as unknown as DemoWithDetails[]
+    // Hide demos whose organisation has been banned (do-not-contact)
+    const fetchedDemos = ((data ?? []) as unknown as DemoWithDetails[]).filter(d => !(d as any).organization?.is_banned)
     setAllDemos(fetchedDemos)
 
     // Fetch contacts for each demo's org

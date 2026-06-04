@@ -7,6 +7,7 @@ import type { OrgSearchResult } from '@/app/api/organizations/search/route'
 
 // Status badge config — shared with OrgSearchModal
 export const ORG_STATUS_CONFIG: Record<string, { label: string; className: string }> = {
+  banned:        { label: 'Banned · Do Not Contact', className: 'bg-[#DC2626] text-white' },
   active_client: { label: 'Active Client',  className: 'bg-[#D1FAE5] text-[#065F46]' },
   lost:          { label: 'Previously Lost', className: 'bg-[#FEE2E2] text-[#991B1B]' },
   ghosted:       { label: 'Ghosted',         className: 'bg-[#F1F5F9] text-[#475569]' },

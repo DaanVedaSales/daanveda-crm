@@ -38,7 +38,8 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(data)
+  // Hide leads belonging to banned organisations (do-not-contact)
+  return NextResponse.json((data ?? []).filter((l: any) => !l.organization?.is_banned))
 }
 
 // POST /api/leads — create lead (admin only, manual entry)

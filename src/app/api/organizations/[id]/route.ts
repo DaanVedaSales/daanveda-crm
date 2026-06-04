@@ -34,7 +34,12 @@ export async function PATCH(
   }
 
   const body = await req.json()
-  const { name, location, url, linkedin_url, thematic_areas } = body
+  const { name, location, url, linkedin_url, thematic_areas, is_banned, ban_reason } = body
+
+  // Banning / unbanning an organisation is admin-only
+  if ((is_banned !== undefined || ban_reason !== undefined) && profile.role !== 'admin') {
+    return NextResponse.json({ error: 'Forbidden: admin access required to ban organisations' }, { status: 403 })
+  }
 
   const updatePayload: Record<string, unknown> = { updated_at: new Date().toISOString() }
   if (name !== undefined)           updatePayload.name = name
@@ -42,6 +47,8 @@ export async function PATCH(
   if (url !== undefined)            updatePayload.url = url
   if (linkedin_url !== undefined)   updatePayload.linkedin_url = linkedin_url
   if (thematic_areas !== undefined) updatePayload.thematic_areas = thematic_areas
+  if (is_banned !== undefined)      updatePayload.is_banned = is_banned
+  if (ban_reason !== undefined)     updatePayload.ban_reason = ban_reason
 
   const { data, error } = await supabase
     .from('organizations')

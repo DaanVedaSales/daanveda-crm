@@ -500,10 +500,12 @@ export type Database = {
         Row: {
           age_years: number | null
           annual_revenue: number | null
+          ban_reason: string | null
           created_at: string | null
           dataset_id: string | null
           icp_verified: boolean | null
           id: string
+          is_banned: boolean
           linkedin_url: string | null
           location: string | null
           name: string
@@ -517,10 +519,12 @@ export type Database = {
         Insert: {
           age_years?: number | null
           annual_revenue?: number | null
+          ban_reason?: string | null
           created_at?: string | null
           dataset_id?: string | null
           icp_verified?: boolean | null
           id?: string
+          is_banned?: boolean
           linkedin_url?: string | null
           location?: string | null
           name: string
@@ -534,10 +538,12 @@ export type Database = {
         Update: {
           age_years?: number | null
           annual_revenue?: number | null
+          ban_reason?: string | null
           created_at?: string | null
           dataset_id?: string | null
           icp_verified?: boolean | null
           id?: string
+          is_banned?: boolean
           linkedin_url?: string | null
           location?: string | null
           name?: string

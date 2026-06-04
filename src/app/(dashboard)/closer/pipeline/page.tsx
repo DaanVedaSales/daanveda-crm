@@ -1198,7 +1198,16 @@ function AddDealModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
               placeholder="Organisation name"
               inputClassName={fieldCls}
             />
-            {selectedOrg && selectedOrg.status !== 'in_database' && (
+            {selectedOrg?.status === 'banned' ? (
+              <div className="flex items-start gap-1.5 bg-[#FEE2E2] border border-[#FCA5A5] rounded-lg px-2.5 py-2">
+                <svg className="w-3.5 h-3.5 text-[#B91C1C] mt-0.5 shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+                </svg>
+                <p className="text-[11px] text-[#B91C1C] font-semibold">
+                  This organisation is banned — do not contact. It cannot be added.
+                </p>
+              </div>
+            ) : selectedOrg && selectedOrg.status !== 'in_database' ? (
               <div className="flex items-start gap-1.5 bg-[#FEF3C7] border border-[#FCD34D] rounded-lg px-2.5 py-2">
                 <svg className="w-3.5 h-3.5 text-[#92400E] mt-0.5 shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
@@ -1209,7 +1218,7 @@ function AddDealModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
                   {' '}A new entry will be created.
                 </p>
               </div>
-            )}
+            ) : null}
             <input value={location} onChange={e => setLocation(e.target.value)} placeholder="City, State" className={fieldCls} />
           </section>
 
@@ -1259,7 +1268,7 @@ function AddDealModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
           {error && <p className="text-[12px] text-[#EF4444] bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</p>}
 
           <div className="flex gap-3 pt-1">
-            <button type="submit" disabled={saving || !orgName.trim() || !kdmName.trim()} className="btn-primary flex-1 py-2.5 text-sm">
+            <button type="submit" disabled={saving || !orgName.trim() || !kdmName.trim() || selectedOrg?.status === 'banned'} className="btn-primary flex-1 py-2.5 text-sm">
               {saving ? 'Adding…' : 'Add to Pipeline'}
             </button>
             <button type="button" onClick={onClose} className="btn-ghost py-2.5 px-5 text-sm">Cancel</button>
@@ -1319,7 +1328,23 @@ export default function PipelinePage() {
       if (TERMINAL_STAGES.includes(d.stage)) return d.updated_at >= monthStart
       return true
     })
-    setColumns(KANBAN_STAGES.filter(s => s !== 'demo_scheduled').map(stage => ({ stage, deals: visible.filter(d => d.stage === stage) })))
+
+    // Priority order within each column: most-due first by relevant date
+    // (next_follow_up, falling back to the demo date); no-date cards sink to the
+    // bottom; ties broken by larger deal value first.
+    const dueTime = (d: DealWithDetails): number => {
+      const raw = d.next_follow_up ?? d.demo?.demo_date ?? null
+      const t = raw ? new Date(raw).getTime() : NaN
+      return isNaN(t) ? Infinity : t
+    }
+    const sortByDue = (arr: DealWithDetails[]) =>
+      [...arr].sort((a, b) => {
+        const da = dueTime(a), db = dueTime(b)
+        if (da !== db) return da - db
+        return (b.deal_value ?? 0) - (a.deal_value ?? 0)
+      })
+
+    setColumns(KANBAN_STAGES.filter(s => s !== 'demo_scheduled').map(stage => ({ stage, deals: sortByDue(visible.filter(d => d.stage === stage)) })))
     setLoading(false)
   }
 

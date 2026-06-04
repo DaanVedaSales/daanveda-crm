@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import TopBar from '@/components/layout/TopBar'
 import { LEAD_STATUS_LABELS, LEAD_STATUS_COLORS } from '@/lib/constants'
 import type { LeadStatus } from '@/types/database'
-import { Trash2, Users, Inbox, CheckCircle2, XCircle, Loader2, MapPin } from 'lucide-react'
+import { Trash2, Users, Inbox, CheckCircle2, XCircle, Loader2, MapPin, Search, Ban } from 'lucide-react'
 
 export default function AdminLeadPoolPage() {
   const [leads, setLeads] = useState<any[]>([])
@@ -15,6 +15,7 @@ export default function AdminLeadPoolPage() {
   const [activeTab,     setActiveTab]     = useState<'pool' | 'claims'>('pool')
   const [confirmDelete, setConfirmDelete] = useState<{ orgId: string; orgName: string } | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [poolSearch, setPoolSearch] = useState('')
 
   // Bulk select state
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -40,9 +41,15 @@ export default function AdminLeadPoolPage() {
     setLoading(false)
   }
 
-  const filtered = filter === 'unassigned'
+  const filteredByTab = filter === 'unassigned'
     ? leads.filter(l => !l.assigned_to && l.phase === 'sdr')
     : leads
+  const poolQuery = poolSearch.trim().toLowerCase()
+  const filtered = poolQuery
+    ? filteredByTab.filter(l =>
+        (l.organization?.name ?? '').toLowerCase().includes(poolQuery) ||
+        (l.organization?.location ?? '').toLowerCase().includes(poolQuery))
+    : filteredByTab
 
   // Reset selection when filter changes
   function setFilterAndClear(f: 'all' | 'unassigned') {
@@ -146,6 +153,29 @@ export default function AdminLeadPoolPage() {
     setConfirmDelete(null)
   }
 
+  // Mark an org as banned (do-not-contact) — hides it from SDR & Closer workspaces
+  async function banOrg(orgId: string | undefined, orgName: string) {
+    if (!orgId) return
+    if (!confirm(`Mark "${orgName}" as a banned organisation?\n\nIt will be hidden from all SDR and Closer workspaces and flagged red in org search. You can unban it from Datasets → Banned Organisations.`)) return
+    const res = await fetch(`/api/organizations/${orgId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_banned: true }),
+    })
+    if (res.ok) {
+      // Remove this org's leads from the pool view
+      setLeads(prev => prev.filter(l => l.organization?.id !== orgId))
+      setSelected(prev => {
+        const next = new Set(prev)
+        leads.filter(l => l.organization?.id === orgId).forEach(l => next.delete(l.id))
+        return next
+      })
+    } else {
+      const data = await res.json().catch(() => ({}))
+      alert(data.error ?? 'Failed to ban organisation. Please try again.')
+    }
+  }
+
   function getSqlLabel(org: any): string {
     return org?.sql_score_label ?? '—'
   }
@@ -193,6 +223,17 @@ export default function AdminLeadPoolPage() {
               {f === 'unassigned' ? `Unassigned (${unassignedCount})` : `All (${leads.length})`}
             </button>
           ))}
+        </div>
+
+        {/* Pool search — pinpoint an organisation to assign, ban, or delete */}
+        <div className="relative max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#94A3B8] pointer-events-none" />
+          <input
+            value={poolSearch}
+            onChange={e => setPoolSearch(e.target.value)}
+            placeholder="Search the pool by organisation or location…"
+            className="w-full pl-9 pr-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20"
+          />
         </div>
 
         {/* Bulk assign bar — slides in when rows are selected */}
@@ -306,13 +347,22 @@ export default function AdminLeadPoolPage() {
                       )}
                     </td>
                     <td className="px-3 py-3 text-right">
-                      <button
-                        onClick={() => setConfirmDelete({ orgId: l.organization?.id, orgName: l.organization?.name ?? 'this org' })}
-                        className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg text-[#94A3B8] hover:text-red-500 hover:bg-red-50 transition-all"
-                        title="Permanently delete from system"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={() => banOrg(l.organization?.id, l.organization?.name ?? 'this org')}
+                          className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium text-[#B91C1C] hover:bg-red-50 transition-colors"
+                          title="Mark as banned — hide from SDR & Closer workspaces"
+                        >
+                          <Ban className="w-3.5 h-3.5" /> Ban
+                        </button>
+                        <button
+                          onClick={() => setConfirmDelete({ orgId: l.organization?.id, orgName: l.organization?.name ?? 'this org' })}
+                          className="p-1.5 rounded-lg text-[#94A3B8] hover:text-red-500 hover:bg-red-50 transition-colors"
+                          title="Permanently delete from system"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 )

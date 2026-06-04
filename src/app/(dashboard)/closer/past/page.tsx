@@ -10,20 +10,23 @@ export default async function DealHistoryPage() {
 
   const { data: profile } = await supabase.from('users').select('id').eq('auth_id', user.id).single()
 
-  const { data: closedDeals } = await supabase
+  const { data: closedDealsRaw } = await supabase
     .from('deals')
-    .select('*, organization:organizations(name, location), demo:demos(sdr_summary, sdr:users!demos_sdr_id_fkey(name))')
+    .select('*, organization:organizations(name, location, is_banned), demo:demos(sdr_summary, sdr:users!demos_sdr_id_fkey(name))')
     .eq('closer_id', profile!.id)
     .in('stage', ['won', 'lost', 'ghosted', 'converted'])
     .order('date_won_lost', { ascending: false })
 
+  // Hide deals belonging to banned organisations (do-not-contact)
+  const closedDeals = (closedDealsRaw ?? []).filter((d: any) => !d.organization?.is_banned)
+
   // won + converted are treated identically — both represent a closed deal
-  const wonDeals = closedDeals?.filter(d => d.stage === 'won' || d.stage === 'converted') ?? []
-  const lost = closedDeals?.filter(d => d.stage === 'lost') ?? []
-  const ghosted = closedDeals?.filter(d => d.stage === 'ghosted') ?? []
+  const wonDeals = closedDeals.filter(d => d.stage === 'won' || d.stage === 'converted')
+  const lost = closedDeals.filter(d => d.stage === 'lost')
+  const ghosted = closedDeals.filter(d => d.stage === 'ghosted')
 
   const totalRevenue = wonDeals.reduce((s, d) => s + (d.deal_value ?? 0), 0)
-  const winRate = closedDeals?.length
+  const winRate = closedDeals.length
     ? Math.round((wonDeals.length / closedDeals.length) * 100)
     : 0
 

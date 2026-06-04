@@ -58,7 +58,7 @@ export default function SDRDemosPage() {
       .from('demos')
       .select(`
         id, demo_date, status, sdr_summary, pain_point, demo_expectation, reminder_sent, created_at, lead_id,
-        organization:organizations(name, location, url),
+        organization:organizations(name, location, url, is_banned),
         closer:users!demos_closer_id_fkey(name)
       `)
       .eq('sdr_id', profile.id)
@@ -66,7 +66,8 @@ export default function SDRDemosPage() {
       .in('status', ['scheduled', 'rescheduled'])
       .order('demo_date', { ascending: true })
 
-    setDemos((data ?? []) as unknown as BookedDemo[])
+    // Hide demos whose organisation has been banned (do-not-contact)
+    setDemos(((data ?? []) as unknown as BookedDemo[]).filter(d => !(d as any).organization?.is_banned))
     setLoading(false)
   }
 
