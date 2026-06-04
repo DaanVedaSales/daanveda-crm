@@ -54,7 +54,7 @@ interface DealWithDetails {
 interface Column { stage: DealStage; deals: DealWithDetails[] }
 
 // Stages that are terminal — collapsible by default
-const TERMINAL_STAGES: DealStage[] = ['won', 'lost', 'ghosted', 'unqualified']
+const TERMINAL_STAGES: DealStage[] = ['won', 'lost', 'ghosted', 'unqualified', 'converting_later']
 
 // ── Skeleton card ──────────────────────────────────────────────────────────────
 function CardSkeleton() {
@@ -325,7 +325,7 @@ function KanbanColumn({
 }
 
 // Stages where POC section is shown
-const POC_VISIBLE_STAGES: DealStage[] = ['demo_done', 'follow_up', 'proposal', 'negotiation', 'won', 'lost', 'ghosted', 'unqualified']
+const POC_VISIBLE_STAGES: DealStage[] = ['demo_done', 'follow_up', 'proposal', 'negotiation', 'converting_later', 'won', 'lost', 'ghosted', 'unqualified']
 
 interface DealComment {
   id: string
@@ -1292,6 +1292,9 @@ export default function PipelinePage() {
   const [pipelineSearch, setPipelineSearch] = useState('')
   // Terminal stages collapsed by default
   const [collapsedStages, setCollapsedStages] = useState<Set<DealStage>>(new Set(TERMINAL_STAGES))
+  // "Converting Later" date-capture modal (committed conversion date)
+  const [convertLaterTarget, setConvertLaterTarget] = useState<string | null>(null)
+  const [convertLaterDate, setConvertLaterDate] = useState('')
   const supabase = createClient()
   const router = useRouter()
 
@@ -1362,6 +1365,14 @@ export default function PipelinePage() {
     const deal = allDeals.find(d => d.id === draggingId)
     if (!deal || deal.stage === targetStage) { setDraggingId(null); return }
 
+    // Converting Later requires a committed conversion date — capture it via a modal
+    if (targetStage === 'converting_later') {
+      setConvertLaterTarget(draggingId)
+      setConvertLaterDate('')
+      setDraggingId(null)
+      return
+    }
+
     if (targetStage === 'lost') {
       const reason = prompt('Loss reason (required):')
       if (!reason?.trim()) { setDraggingId(null); return }
@@ -1374,6 +1385,18 @@ export default function PipelinePage() {
       await fetch(`/api/deals/${draggingId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ stage: targetStage }) })
     }
     setDraggingId(null); fetchPipeline()
+  }
+
+  async function confirmConvertLater() {
+    if (!convertLaterTarget || !convertLaterDate) return
+    await fetch(`/api/deals/${convertLaterTarget}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stage: 'converting_later', next_follow_up: convertLaterDate }),
+    })
+    setConvertLaterTarget(null)
+    setConvertLaterDate('')
+    fetchPipeline()
   }
 
   // When pipeline search is active, search across ALL deals (incl. past months) for completeness
@@ -1562,6 +1585,45 @@ export default function PipelinePage() {
       )}
       {showOrgSearch && (
         <OrgSearchModal role="closer" onClose={() => setShowOrgSearch(false)} />
+      )}
+
+      {/* Converting Later — committed conversion date capture */}
+      {convertLaterTarget && (
+        <div
+          className="fixed inset-0 bg-[#0F172A]/40 backdrop-blur-[2px] z-50 flex items-center justify-center p-4"
+          onMouseDown={e => { if (e.target === e.currentTarget) { setConvertLaterTarget(null); setConvertLaterDate('') } }}
+        >
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+            <h3 className="text-[15px] font-semibold text-[#0F172A]">Move to Converting Later</h3>
+            <p className="text-[11px] text-[#94A3B8] mt-1">
+              When did they commit to converting? This date sets the priority order in Deal History and the follow-up date when you bring it back.
+            </p>
+            <label className="block text-[11px] font-medium text-[#374151] mt-4 mb-1">
+              Committed conversion date <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="date"
+              value={convertLaterDate}
+              onChange={e => setConvertLaterDate(e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20"
+            />
+            <div className="flex gap-2 mt-5">
+              <button
+                onClick={confirmConvertLater}
+                disabled={!convertLaterDate}
+                className="flex-1 py-2.5 bg-[#0D9488] text-white text-sm font-semibold rounded-xl hover:bg-[#0F766E] disabled:opacity-40 transition-colors"
+              >
+                Move to Converting Later
+              </button>
+              <button
+                onClick={() => { setConvertLaterTarget(null); setConvertLaterDate('') }}
+                className="px-5 py-2.5 text-sm text-[#64748B] border border-[#E2E8F0] rounded-xl hover:bg-[#F8FAFC] transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

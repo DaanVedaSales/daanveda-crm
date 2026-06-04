@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
             .from('deals').select('id', { count: 'exact', head: true })
             .eq('closer_id', user.id)
             .lte('next_follow_up', today)
-            .not('stage', 'in', '("won","lost","ghosted")')
+            .not('stage', 'in', '("won","lost","ghosted","converting_later")')
 
           subject = `DaanVeda CRM — ${todayDemos?.length ?? 0} demos today`
           html = buildCloserMorningEmail(user.name, todayDemos ?? [], overdue ?? 0)

@@ -2,6 +2,8 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import TopBar from '@/components/layout/TopBar'
 import { formatCurrency, formatDate } from '@/lib/utils'
+import { DEAL_STAGE_LABELS } from '@/lib/constants'
+import ReengageableDeals from '@/components/crm/ReengageableDeals'
 
 export default async function DealHistoryPage() {
   const supabase = createClient()
@@ -14,27 +16,39 @@ export default async function DealHistoryPage() {
     .from('deals')
     .select('*, organization:organizations(name, location, is_banned), demo:demos(sdr_summary, sdr:users!demos_sdr_id_fkey(name))')
     .eq('closer_id', profile!.id)
-    .in('stage', ['won', 'lost', 'ghosted', 'converted'])
+    .in('stage', ['won', 'converted', 'lost', 'unqualified', 'ghosted', 'converting_later'])
     .order('date_won_lost', { ascending: false })
 
   // Hide deals belonging to banned organisations (do-not-contact)
-  const closedDeals = (closedDealsRaw ?? []).filter((d: any) => !d.organization?.is_banned)
+  const all = (closedDealsRaw ?? []).filter((d: any) => !d.organization?.is_banned)
 
-  // won + converted are treated identically — both represent a closed deal
-  const wonDeals = closedDeals.filter(d => d.stage === 'won' || d.stage === 'converted')
-  const lost = closedDeals.filter(d => d.stage === 'lost')
-  const ghosted = closedDeals.filter(d => d.stage === 'ghosted')
+  // Static, view-only closed outcomes
+  const wonDeals = all.filter(d => d.stage === 'won' || d.stage === 'converted')
+  const lost = all.filter(d => d.stage === 'lost')
+  const unqualified = all.filter(d => d.stage === 'unqualified')
+  const ghosted = all.filter(d => d.stage === 'ghosted')
+  const convertingLater = [...all.filter(d => d.stage === 'converting_later')]
+    .sort((a, b) => (a.next_follow_up ?? '9999-12-31').localeCompare(b.next_follow_up ?? '9999-12-31'))
+
+  // "Closed" group — view-only, newest first by closed date
+  const staticClosed = [...wonDeals, ...lost, ...unqualified]
+    .sort((a, b) => (b.date_won_lost ?? '').localeCompare(a.date_won_lost ?? ''))
 
   const totalRevenue = wonDeals.reduce((s, d) => s + (d.deal_value ?? 0), 0)
-  const winRate = closedDeals.length
-    ? Math.round((wonDeals.length / closedDeals.length) * 100)
-    : 0
+  const decided = wonDeals.length + lost.length + ghosted.length
+  const winRate = decided ? Math.round((wonDeals.length / decided) * 100) : 0
+
+  // Serializable rows for the client re-engage component
+  const reengage = {
+    convertingLater: convertingLater.map((d: any) => ({ id: d.id, name: d.organization?.name ?? '—', location: d.organization?.location ?? null, date: d.next_follow_up, value: d.deal_value })),
+    ghosted: ghosted.map((d: any) => ({ id: d.id, name: d.organization?.name ?? '—', location: d.organization?.location ?? null, date: d.date_won_lost, value: d.deal_value })),
+  }
 
   return (
     <div className="flex-1 min-h-0 flex flex-col bg-[#F8FAFC]">
       <TopBar
         title="Deal History"
-        subtitle={`${wonDeals.length} won · ${lost.length} lost · ${ghosted.length} ghosted`}
+        subtitle={`${wonDeals.length} won · ${lost.length} lost · ${ghosted.length} ghosted · ${convertingLater.length} converting later`}
       />
       <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-5 animate-in-page">
 
@@ -42,7 +56,7 @@ export default async function DealHistoryPage() {
         <div className="grid grid-cols-3 gap-4">
           {[
             { label: 'Total Revenue Won', value: formatCurrency(totalRevenue), sub: `${wonDeals.length} deals`, color: '#059669' },
-            { label: 'Win Rate', value: `${winRate}%`, sub: `${closedDeals?.length ?? 0} total closed`, color: '#1A56DB' },
+            { label: 'Win Rate', value: `${winRate}%`, sub: `${decided} decided`, color: '#1A56DB' },
             { label: 'Lost / Ghosted', value: String(lost.length + ghosted.length), sub: 'closed without revenue', color: '#EF4444' },
           ].map(kpi => (
             <div
@@ -68,19 +82,22 @@ export default async function DealHistoryPage() {
           ))}
         </div>
 
-        {/* All closed deals table */}
+        {/* Re-engageable: Converting Later + Ghosted (bring back to follow-up) */}
+        <ReengageableDeals convertingLater={reengage.convertingLater} ghosted={reengage.ghosted} />
+
+        {/* Closed deals — view-only (won / lost / unqualified) */}
         <div
           className="bg-white rounded-2xl border border-[#E2E8F0] overflow-hidden"
           style={{ boxShadow: '0 1px 4px rgba(15,23,42,0.06)' }}
         >
           <div className="px-5 py-4 border-b border-[#F1F5F9]">
-            <p className="text-label text-[#64748B]">All Closed Deals</p>
+            <p className="text-label text-[#64748B]">Closed Deals</p>
             <p className="text-[13px] font-semibold text-[#0F172A] mt-0.5">
-              {closedDeals?.length ?? 0} {(closedDeals?.length ?? 0) === 1 ? 'deal' : 'deals'} closed
+              {staticClosed.length} {staticClosed.length === 1 ? 'deal' : 'deals'} · won, lost &amp; unqualified
             </p>
           </div>
 
-          {!closedDeals?.length ? (
+          {!staticClosed.length ? (
             <div className="p-12 text-center">
               <div className="w-10 h-10 rounded-xl bg-[#F1F5F9] flex items-center justify-center mx-auto mb-3">
                 <svg className="w-5 h-5 text-[#94A3B8]" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
@@ -88,7 +105,7 @@ export default async function DealHistoryPage() {
                 </svg>
               </div>
               <p className="text-[13px] font-medium text-[#374151]">No closed deals yet</p>
-              <p className="text-[11px] text-[#94A3B8] mt-1">Won, lost, and ghosted deals will appear here</p>
+              <p className="text-[11px] text-[#94A3B8] mt-1">Won, lost, and unqualified deals will appear here</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -101,7 +118,10 @@ export default async function DealHistoryPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#F1F5F9]">
-                  {closedDeals.map((d: any) => (
+                  {staticClosed.map((d: any) => {
+                    const isWon = d.stage === 'won' || d.stage === 'converted'
+                    const outcomeLabel = isWon ? 'Won' : (DEAL_STAGE_LABELS[d.stage as keyof typeof DEAL_STAGE_LABELS] ?? d.stage)
+                    return (
                     <tr key={d.id} className="hover:bg-[#F8FAFC] transition-colors">
                       <td className="px-5 py-3.5">
                         <p className="text-[13px] font-medium text-[#0F172A]">{d.organization?.name}</p>
@@ -111,13 +131,13 @@ export default async function DealHistoryPage() {
                       </td>
                       <td className="px-5 py-3.5">
                         <span className={`inline-flex px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${
-                          (d.stage === 'won' || d.stage === 'converted')
+                          isWon
                             ? 'bg-[#F0FDF4] border-[#BBF7D0] text-[#059669]'
                             : d.stage === 'lost'
                             ? 'bg-red-50 border-red-200 text-[#EF4444]'
-                            : 'bg-[#F8FAFC] border-[#E2E8F0] text-[#94A3B8]'
+                            : 'bg-[#FFF7ED] border-[#FED7AA] text-[#D97706]'
                         }`}>
-                          {(d.stage === 'won' || d.stage === 'converted') ? 'Won' : d.stage.charAt(0).toUpperCase() + d.stage.slice(1)}
+                          {outcomeLabel}
                         </span>
                       </td>
                       <td className="px-5 py-3.5">
@@ -138,7 +158,7 @@ export default async function DealHistoryPage() {
                         {d.loss_reason ?? '—'}
                       </td>
                     </tr>
-                  ))}
+                  )})}
                 </tbody>
               </table>
             </div>

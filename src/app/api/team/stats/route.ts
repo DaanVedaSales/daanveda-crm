@@ -229,7 +229,7 @@ export async function GET(request: Request) {
         .from('deals')
         .select('id', { count: 'exact', head: true })
         .eq('closer_id', closer.id)
-        .not('stage', 'in', '("won","lost","ghosted","unqualified","converted","invoice_sent")')
+        .not('stage', 'in', '("won","lost","ghosted","unqualified","converted","invoice_sent","converting_later")')
         .eq('removed_from_board', false)
 
       // 6. Interested (follow_up + negotiation)
@@ -247,7 +247,7 @@ export async function GET(request: Request) {
         .select('id', { count: 'exact', head: true })
         .eq('closer_id', closer.id)
         .gte('next_follow_up', todayStr)
-        .not('stage', 'in', '("won","lost","ghosted","unqualified","converted")')
+        .not('stage', 'in', '("won","lost","ghosted","unqualified","converted","converting_later")')
 
       // 8. Avg deal cycle (days from deal created_at to updated_at for won deals)
       let avgDealCycle: number | null = null

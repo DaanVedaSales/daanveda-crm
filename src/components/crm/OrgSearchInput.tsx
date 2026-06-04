@@ -12,6 +12,7 @@ export const ORG_STATUS_CONFIG: Record<string, { label: string; className: strin
   lost:          { label: 'Previously Lost', className: 'bg-[#FEE2E2] text-[#991B1B]' },
   ghosted:       { label: 'Ghosted',         className: 'bg-[#F1F5F9] text-[#475569]' },
   in_pipeline:   { label: 'In Pipeline',     className: 'bg-[#EFF6FF] text-[#1D4ED8]' },
+  converting_later: { label: 'Converting Later', className: 'bg-[#CCFBF1] text-[#0F766E]' },
   demo_booked:   { label: 'Demo Booked',     className: 'bg-[#F3E8FF] text-[#6B21A8]' },
   with_sdr:      { label: 'With SDR',        className: 'bg-[#FEF3C7] text-[#92400E]' },
   claim_pending: { label: 'Claimed · Pending', className: 'bg-[#FEF3C7] text-[#92400E] border border-[#FCD34D]' },

@@ -52,13 +52,13 @@ export default async function CloserDashboardPage() {
   const [wonRes, pipelineRes, todayDemosRes, followupsRes, upcomingDemosRes, demosAssignedRes, lostGhostedRes] = await Promise.all([
     supabase.from('deals').select('deal_value').eq('closer_id', profile.id).in('stage', ['won', 'converted']).gte('date_won_lost', monthStart),
     supabase.from('deals').select('id', { count: 'exact', head: true }).eq('closer_id', profile.id)
-      .not('stage', 'in', '("won","lost","ghosted","converted")')
+      .not('stage', 'in', '("won","lost","ghosted","converted","converting_later")')
       .or('removed_from_board.is.null,removed_from_board.eq.false'),
     supabase.from('demos').select('id', { count: 'exact', head: true }).eq('closer_id', profile.id)
       .gte('demo_date', istDayStart(today)).lte('demo_date', istDayEnd(today))
       .in('status', ['scheduled', 'rescheduled']),
     supabase.from('deals').select('id', { count: 'exact', head: true }).eq('closer_id', profile.id)
-      .lte('next_follow_up', today).not('stage', 'in', '("won","lost","ghosted")'),
+      .lte('next_follow_up', today).not('stage', 'in', '("won","lost","ghosted","converting_later")'),
     supabase.from('demos')
       .select('id, demo_date, organization:organizations(name), sdr:users!demos_sdr_id_fkey(name)')
       .eq('closer_id', profile.id)

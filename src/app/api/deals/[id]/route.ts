@@ -23,13 +23,18 @@ export async function PATCH(
     return NextResponse.json({ error: 'Billing name is mandatory when marking a deal as won.' }, { status: 400 })
   }
 
+  // Validate: committed conversion date MANDATORY when stage = converting_later
+  if (stage === 'converting_later' && !next_follow_up) {
+    return NextResponse.json({ error: 'A committed conversion date is required for Converting Later.' }, { status: 400 })
+  }
+
   const supabase = createClient()
 
   const updatePayload: Record<string, unknown> = { updated_at: new Date().toISOString() }
   if (stage) {
     updatePayload.stage = stage
-    if (['won', 'lost'].includes(stage)) {
-      updatePayload.date_won_lost = toISTDateString()  // IST calendar day
+    if (['won', 'lost', 'ghosted', 'unqualified'].includes(stage)) {
+      updatePayload.date_won_lost = toISTDateString()  // IST calendar day — closed/terminal date
     }
   }
   if (deal_value !== undefined) updatePayload.deal_value = deal_value

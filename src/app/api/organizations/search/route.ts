@@ -11,6 +11,7 @@ export type OrgSearchStatus =
   | 'active_client'
   | 'lost'
   | 'ghosted'
+  | 'converting_later'
   | 'in_pipeline'
   | 'demo_booked'
   | 'with_sdr'
@@ -206,7 +207,7 @@ function deriveStatus(org: any, claimingSDRName: string | null): {
   }
 
   // Active pipeline deal (non-terminal)
-  const TERMINAL = ['won', 'lost', 'ghosted', 'unqualified']
+  const TERMINAL = ['won', 'lost', 'ghosted', 'unqualified', 'converting_later']
   const activeDeal = allDeals.find((d: any) => !TERMINAL.includes(d.stage))
   if (activeDeal) {
     const stageLabel = STAGE_LABELS[activeDeal.stage as string] ?? activeDeal.stage
@@ -217,6 +218,12 @@ function deriveStatus(org: any, claimingSDRName: string | null): {
       assignee_role: 'closer',
       deal_stage: activeDeal.stage,
     }
+  }
+
+  // Converting later — parked, committed to convert on a future date
+  const convertLaterDeal = allDeals.find((d: any) => d.stage === 'converting_later')
+  if (convertLaterDeal) {
+    return { status: 'converting_later', status_label: 'Converting later', assignee_name: convertLaterDeal.closer?.name ?? null, assignee_role: 'closer', deal_stage: 'converting_later' }
   }
 
   // Lost / ghosted deal
