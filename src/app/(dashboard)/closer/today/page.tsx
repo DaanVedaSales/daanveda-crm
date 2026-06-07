@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import TopBar from '@/components/layout/TopBar'
 import { createClient } from '@/lib/supabase/client'
 import DateTimePicker from '@/components/ui/DateTimePicker'
-import { cn, formatIST, toISTDateString, istDayStart } from '@/lib/utils'
+import { cn, formatIST, toISTDateString } from '@/lib/utils'
 import { CheckCircle, XCircle, RefreshCw, X, Bell, BellOff, Calendar, ExternalLink, Building2, Users, Banknote, Tag, AlertCircle, Target, Trash2, ChevronDown } from 'lucide-react'
 
 interface DemoWithDetails {
@@ -33,7 +33,7 @@ interface DemoWithDetails {
 
 interface UserOption { id: string; name: string }
 
-type Filter = 'today' | 'tomorrow' | 'week' | 'all'
+type Filter = 'overdue' | 'today' | 'tomorrow' | 'week' | 'all'
 
 function formatTime(d: string) {
   return formatIST(d, { hour: '2-digit', minute: '2-digit', hour12: true })
@@ -126,7 +126,8 @@ export default function ActionsPage() {
       .eq('closer_id', profile.id)
       .eq('is_deleted', false)
       .in('status', ['scheduled', 'rescheduled'])
-      .gte('demo_date', istDayStart(toISTDateString()))
+      // No date floor — past, un-actioned demos must surface as "Overdue" so the
+      // closer can still mark attended / no-show / reschedule (otherwise they vanish).
       .order('demo_date', { ascending: true })
 
     // Hide demos whose organisation has been banned (do-not-contact)
@@ -151,9 +152,13 @@ export default function ActionsPage() {
     setLoading(false)
   }
 
+  // Upcoming groups. Overdue demos (diff < 0) are surfaced in their own group,
+  // always at the top, so they're excluded from the normal date groups here.
   function getFiltered(): DemoWithDetails[] {
     return allDemos.filter(d => {
       const diff = istDayDiff(d.demo_date)
+      if (diff < 0) return false              // overdue → own group
+      if (filter === 'overdue') return false  // overdue-focus mode hides upcoming
       if (filter === 'today') return diff === 0
       if (filter === 'tomorrow') return diff === 1
       if (filter === 'week') return diff <= 7
@@ -211,9 +216,13 @@ export default function ActionsPage() {
     setSaving(null)
   }
 
-  const todayCount = allDemos.filter(d => formatDay(d.demo_date) === 'Today').length
+  const overdueDemos = allDemos.filter(d => istDayDiff(d.demo_date) < 0)
+  const todayCount = allDemos.filter(d => istDayDiff(d.demo_date) === 0).length
   const filtered = getFiltered()
-  const groups = groupByDate(filtered)
+  const groups: { label: string; demos: DemoWithDetails[]; overdue?: boolean }[] = [
+    ...(overdueDemos.length > 0 ? [{ label: 'Overdue · Needs Action', demos: overdueDemos, overdue: true }] : []),
+    ...groupByDate(filtered),
+  ]
 
   if (loading) {
     return (
@@ -241,11 +250,20 @@ export default function ActionsPage() {
     <div className="flex-1 min-h-0 flex flex-col bg-[#F8FAFC]">
       <TopBar
         title="Upcoming Demos"
-        subtitle={`${allDemos.length} upcoming · ${todayCount} today`}
+        subtitle={`${overdueDemos.length > 0 ? `${overdueDemos.length} overdue · ` : ''}${todayCount} today · ${allDemos.length} open`}
       />
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Filter bar */}
         <div className="px-6 pt-4 pb-3 flex gap-2 bg-white border-b border-[#E2E8F0]">
+          {overdueDemos.length > 0 && (
+            <button onClick={() => setFilter('overdue')}
+              className={cn(
+                'px-4 py-1.5 rounded-full text-xs font-semibold transition-colors',
+                filter === 'overdue' ? 'bg-[#EF4444] text-white' : 'bg-red-50 text-[#B91C1C] hover:bg-red-100'
+              )}>
+              Overdue · {overdueDemos.length}
+            </button>
+          )}
           {([['today', 'Today'], ['tomorrow', 'Tomorrow'], ['week', 'Next 7 Days'], ['all', 'All']] as [Filter, string][]).map(([v, label]) => (
             <button key={v} onClick={() => setFilter(v)}
               className={cn(
@@ -273,7 +291,7 @@ export default function ActionsPage() {
             <div key={group.label}>
               <h2 className={cn(
                 'text-label mb-3',
-                group.label === 'Today' ? 'text-[#1A56DB]' : 'text-[#94A3B8]'
+                group.overdue ? 'text-[#EF4444]' : group.label === 'Today' ? 'text-[#1A56DB]' : 'text-[#94A3B8]'
               )}>
                 {group.label} &middot; {group.demos.length} {group.demos.length === 1 ? 'demo' : 'demos'}
               </h2>
@@ -286,7 +304,10 @@ export default function ActionsPage() {
                   return (
                     <div
                       key={demo.id}
-                      className="bg-white rounded-2xl border border-[#E2E8F0] overflow-hidden"
+                      className={cn(
+                        'bg-white rounded-2xl border border-[#E2E8F0] overflow-hidden',
+                        group.overdue && 'border-l-4 border-l-[#EF4444]'
+                      )}
                       style={{ boxShadow: '0 1px 4px rgba(15,23,42,0.06)' }}
                     >
                       {/* ── Reminder strip ── */}
@@ -318,7 +339,12 @@ export default function ActionsPage() {
                             )}
                           </div>
                           <div className="text-right shrink-0">
-                            <p className="text-[13px] font-semibold text-[#1A56DB]">{formatTime(demo.demo_date)}</p>
+                            {group.overdue && (
+                              <p className="text-[11px] font-medium text-[#EF4444]">
+                                {formatIST(demo.demo_date, { weekday: 'short', day: 'numeric', month: 'short' })}
+                              </p>
+                            )}
+                            <p className={cn('text-[13px] font-semibold', group.overdue ? 'text-[#EF4444]' : 'text-[#1A56DB]')}>{formatTime(demo.demo_date)}</p>
                             {demo.status === 'rescheduled' && (
                               <span className="inline-block mt-1 text-[10px] bg-amber-50 border border-amber-200 text-amber-700 px-2 py-0.5 rounded-full font-medium">
                                 Rescheduled
