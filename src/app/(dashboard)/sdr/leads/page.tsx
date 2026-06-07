@@ -114,8 +114,8 @@ export default function SDRLeadsPage() {
     }))
     setAllSDRLeads(allWithContacts)
 
-    // Only show active working leads in the My Leads list
-    const active = allWithContacts.filter(l => !EXCLUDE_FROM_ASSIGNED.has(l.status))
+    // Only show active SDR-phase working leads (excludes returned/dead + closer-phase)
+    const active = allWithContacts.filter(l => l.phase === 'sdr' && !EXCLUDE_FROM_ASSIGNED.has(l.status))
     setLeads(active)
     setFiltered(active)
     setLoading(false)
@@ -836,6 +836,7 @@ function LeadDetailPanel({
   const [showLogActivity, setShowLogActivity] = useState(false)
   const [showBookDemo, setShowBookDemo] = useState(false)
   const [showEditLead, setShowEditLead] = useState(false)
+  const [markingDead, setMarkingDead] = useState(false)
   const supabase = createClient()
 
   useEffect(() => {
@@ -891,6 +892,28 @@ function LeadDetailPanel({
     ...comments.map((c: any) => ({ kind: 'comment' as const, at: c.created_at, channel: null, outcome: null, note: c.comment, via: null, who: c.user?.name })),
   ].sort((a, b) => (b.at ?? '').localeCompare(a.at ?? ''))
 
+  // Mark Dead — soft-gate: only counts the contact methods the KDM actually has,
+  // warns if any remain untried, but never hard-blocks.
+  async function markDead() {
+    const tried = new Set(activities.map((a: any) => a.channel).filter(Boolean))
+    const untried = trackerMethods.filter(m => !tried.has(METHOD_CHANNEL[m]))
+    const total = trackerMethods.length
+    const msg = total === 0
+      ? 'No contact methods are on record for this lead. Mark it dead and send it back to admin?'
+      : untried.length
+        ? `${total - untried.length} of ${total} contact methods tried.\nNot yet tried: ${untried.join(', ')}.\n\nMark this lead dead and send it back to admin?`
+        : `All ${total} available contact methods exhausted.\n\nMark this lead dead and send it back to admin?`
+    if (!confirm(msg)) return
+    setMarkingDead(true)
+    const res = await fetch(`/api/leads/${lead.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phase: 'dead', returned_reason: 'dead' }),
+    })
+    if (res.ok) { onRefresh(); onClose() }
+    else { alert('Failed to mark dead. Please try again.'); setMarkingDead(false) }
+  }
+
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -939,6 +962,14 @@ function LeadDetailPanel({
           className="flex-1 py-1.5 text-xs font-medium bg-[#059669] text-white rounded-lg hover:bg-[#047857] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           Book Demo
+        </button>
+        <button
+          onClick={markDead}
+          disabled={lead.phase === 'closer' || markingDead}
+          className="flex-1 py-1.5 text-xs font-medium border border-[#FCA5A5] text-[#B91C1C] rounded-lg hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          title="All contacts exhausted — return this lead to admin"
+        >
+          {markingDead ? '…' : 'Mark Dead'}
         </button>
       </div>
 

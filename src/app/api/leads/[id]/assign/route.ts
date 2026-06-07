@@ -21,7 +21,7 @@ export async function POST(
   // Update lead assignment
   const { error: updateError } = await supabase
     .from('leads')
-    .update({ assigned_to: to_user_id, assigned_by: profile.id, status: 'assigned', updated_at: new Date().toISOString() })
+    .update({ assigned_to: to_user_id, assigned_by: profile.id, status: 'assigned', phase: 'sdr', returned_reason: null, updated_at: new Date().toISOString() })
     .eq('id', params.id)
 
   if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 })

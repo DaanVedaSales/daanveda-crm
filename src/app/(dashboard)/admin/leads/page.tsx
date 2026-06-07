@@ -12,7 +12,7 @@ export default function AdminLeadPoolPage() {
   const [loading, setLoading] = useState(true)
   const [assigning, setAssigning] = useState<string | null>(null)
   const [filter, setFilter] = useState<'all' | 'unassigned'>('unassigned')
-  const [activeTab,     setActiveTab]     = useState<'pool' | 'claims'>('pool')
+  const [activeTab,     setActiveTab]     = useState<'pool' | 'claims' | 'returned'>('pool')
   const [confirmDelete, setConfirmDelete] = useState<{ orgId: string; orgName: string } | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [poolSearch, setPoolSearch] = useState('')
@@ -191,8 +191,9 @@ export default function AdminLeadPoolPage() {
       {/* ── Top-level tab bar ───────────────────────────────────────────── */}
       <div className="border-b border-[#E2E8F0] bg-white px-6 flex gap-0 shrink-0">
         {([
-          ['pool',   'Lead Pool'],
-          ['claims', 'Claims'],
+          ['pool',     'Lead Pool'],
+          ['claims',   'Claims'],
+          ['returned', 'Returned'],
         ] as const).map(([tab, label]) => (
           <button
             key={tab}
@@ -210,6 +211,9 @@ export default function AdminLeadPoolPage() {
 
       {/* ── Claims tab ──────────────────────────────────────────────────── */}
       {activeTab === 'claims' && <ClaimsSection />}
+
+      {/* ── Returned tab (not interested / dead / ban requests) ─────────── */}
+      {activeTab === 'returned' && <ReturnedLeadsSection />}
 
       {/* ── Lead Pool tab (existing content) ────────────────────────────── */}
       {activeTab === 'pool' && (
@@ -622,6 +626,131 @@ function ClaimsSection() {
           })}
         </div>
       )}
+    </div>
+  )
+}
+
+// ── Returned Leads (not interested / dead / ban requests) ─────────────────────
+function ReturnedLeadsSection() {
+  const [leads, setLeads] = useState<any[]>([])
+  const [sdrs, setSdrs] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState<string | null>(null)
+  const [pick, setPick] = useState<Record<string, string>>({})
+
+  useEffect(() => { load() }, [])
+
+  async function load() {
+    setLoading(true)
+    const [lRes, uRes] = await Promise.all([
+      fetch('/api/admin/returned-leads').then(r => r.json()).catch(() => []),
+      fetch('/api/users').then(r => r.json()).catch(() => []),
+    ])
+    setLeads(Array.isArray(lRes) ? lRes : [])
+    setSdrs((Array.isArray(uRes) ? uRes : []).filter((u: any) => u.role === 'sdr' && u.is_active))
+    setLoading(false)
+  }
+
+  async function reassign(leadId: string) {
+    const to = pick[leadId]
+    if (!to) return
+    setBusy(leadId)
+    const res = await fetch(`/api/leads/${leadId}/assign`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ to_user_id: to, reason: 'Reassigned from Returned leads' }),
+    })
+    if (res.ok) setLeads(prev => prev.filter(l => l.id !== leadId))
+    else alert('Failed to reassign.')
+    setBusy(null)
+  }
+
+  async function confirmBan(leadId: string, orgId: string) {
+    if (!orgId) return
+    if (!confirm('Ban this organisation? It will be hidden everywhere and removed from all workspaces.')) return
+    setBusy(leadId)
+    const res = await fetch(`/api/organizations/${orgId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_banned: true, ban_reason: 'SDR ban request' }),
+    })
+    if (res.ok) setLeads(prev => prev.filter(l => l.id !== leadId))
+    else { const d = await res.json().catch(() => ({})); alert(d.error ?? 'Failed to ban.') }
+    setBusy(null)
+  }
+
+  const SHORT: Record<string, string> = { 'Cold Call': 'Call', 'Cold Email': 'Email' }
+  const GROUPS = [
+    { key: 'not_interested', label: 'Not Interested', color: '#D97706' },
+    { key: 'dead',           label: 'Dead',           color: '#EF4444' },
+    { key: 'ban_requested',  label: 'Ban Requests',   color: '#DC2626' },
+  ]
+
+  if (loading) {
+    return <div className="flex-1 p-6"><p className="text-sm text-[#94A3B8]">Loading…</p></div>
+  }
+
+  return (
+    <div className="flex-1 p-6 space-y-6 overflow-y-auto">
+      {leads.length === 0 && (
+        <div className="text-center py-12">
+          <p className="text-sm font-medium text-[#374151]">No returned leads</p>
+          <p className="text-xs text-[#94A3B8] mt-1">Leads marked not-interested, dead, or flagged for ban will appear here.</p>
+        </div>
+      )}
+      {GROUPS.map(g => {
+        const items = leads.filter(l => (l.returned_reason ?? 'dead') === g.key)
+        if (items.length === 0) return null
+        return (
+          <div key={g.key}>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: g.color }} />
+              <h3 className="text-[13px] font-semibold text-[#0F172A]">{g.label}</h3>
+              <span className="text-[11px] text-[#94A3B8]">({items.length})</span>
+            </div>
+            <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm divide-y divide-[#F1F5F9]">
+              {items.map(l => (
+                <div key={l.id} className="px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-[#0F172A] truncate">{l.organization?.name ?? '—'}</p>
+                    <div className="flex flex-wrap items-center gap-x-3 text-[11px] text-[#94A3B8] mt-0.5">
+                      {l.organization?.location && <span>{l.organization.location}</span>}
+                      <span>Tried: {(l.methods ?? []).map((m: string) => SHORT[m] ?? m).join(' · ') || 'none'}</span>
+                      {l.assignee?.name && <span>Was: {l.assignee.name}</span>}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {g.key === 'ban_requested' && (
+                      <button
+                        onClick={() => confirmBan(l.id, l.organization?.id)}
+                        disabled={busy === l.id}
+                        className="px-2.5 py-1.5 text-[11px] font-semibold text-white bg-[#DC2626] rounded-lg hover:bg-[#B91C1C] disabled:opacity-50 transition-colors"
+                      >
+                        Confirm Ban
+                      </button>
+                    )}
+                    <select
+                      value={pick[l.id] ?? ''}
+                      onChange={e => setPick(p => ({ ...p, [l.id]: e.target.value }))}
+                      className="px-2 py-1.5 text-[11px] border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20"
+                    >
+                      <option value="">Reassign to…</option>
+                      {sdrs.map((u: any) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                    </select>
+                    <button
+                      onClick={() => reassign(l.id)}
+                      disabled={busy === l.id || !pick[l.id]}
+                      className="px-2.5 py-1.5 text-[11px] font-semibold text-white bg-[#1A56DB] rounded-lg hover:bg-[#1A4FBF] disabled:opacity-50 transition-colors"
+                    >
+                      Reassign
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }

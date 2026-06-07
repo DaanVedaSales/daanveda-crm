@@ -62,6 +62,15 @@ export async function POST(req: NextRequest) {
   if (callback_date) leadUpdate.callback_date = callback_date
   if (follow_up_date) leadUpdate.follow_up_date = follow_up_date
 
+  // Return-to-admin routing: a real decline, or a ban request, leaves the SDR side
+  if (outcome && NOT_INTERESTED_OUTCOMES.includes(outcome)) {
+    leadUpdate.phase = 'dead'
+    leadUpdate.returned_reason = 'not_interested'
+  } else if (outcome === BANNED_OUTCOME) {
+    leadUpdate.phase = 'dead'
+    leadUpdate.returned_reason = 'ban_requested'
+  }
+
   await supabase.from('leads').update(leadUpdate).eq('id', lead_id)
 
   return NextResponse.json(activity, { status: 201 })

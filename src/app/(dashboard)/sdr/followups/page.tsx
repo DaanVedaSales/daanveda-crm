@@ -347,6 +347,7 @@ export default function FollowupsPage() {
       .select('id, org_id, status, callback_date, follow_up_date, updated_at, organization:organizations(name, location, url, annual_revenue, team_size, is_banned)')
       .eq('assigned_to', profile.id)
       .eq('is_deleted', false)
+      .eq('phase', 'sdr')
       .in('status', ['follow_up', 'call_again', 'not_reachable', 'no_show'])
       .order('callback_date', { ascending: true, nullsFirst: false })
 
