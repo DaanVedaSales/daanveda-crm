@@ -315,59 +315,54 @@ export default function SDRLeadsPage() {
                     <p className="text-xs text-[#94A3B8] truncate">
                       {lead.organization?.location} · SQL {(lead.organization as any)?.sql_score_label ?? (lead.organization?.sql_score != null ? `${lead.organization.sql_score}/8` : 'N/A')}
                     </p>
-                    <div className="flex items-center gap-2 mt-1.5">
-                      <span className={cn('text-[10px] px-2 py-0.5 rounded-full font-medium', LEAD_STATUS_COLORS[lead.status as LeadStatus])}>
-                        {LEAD_STATUS_LABELS[lead.status as LeadStatus]}
-                      </span>
-                      {lead.follow_up_date && (
-                        <span className="text-[10px] text-[#94A3B8]">
-                          FU: {formatRelativeDate(lead.follow_up_date)}
-                        </span>
-                      )}
-                    </div>
-                    {(lead as any).lastActivity && (() => {
+                    {/* Last touch — channels + when, plus follow-up date if set */}
+                    {(() => {
                       const SHORT: Record<string, string> = { 'Cold Call': 'Call', 'Cold Email': 'Email' }
                       const la = (lead as any).lastActivity
-                      const chans = (la.channels ?? []).map((c: string) => SHORT[c] ?? c).join(' · ') || 'Contacted'
-                      return (
-                        <p className="text-[10px] text-[#94A3B8] truncate mt-1">
-                          {chans}{la.outcome ? ` · ${la.outcome}` : ''} · {formatRelativeDate(la.at)}
-                        </p>
-                      )
+                      const chans = la ? ((la.channels ?? []).map((c: string) => SHORT[c] ?? c).join(' · ') || 'Contacted') : null
+                      const parts = [
+                        chans && la?.at ? `${chans} · ${formatRelativeDate(la.at)}` : chans,
+                        lead.follow_up_date ? `FU ${formatRelativeDate(lead.follow_up_date)}` : null,
+                      ].filter(Boolean)
+                      return parts.length > 0 ? (
+                        <p className="text-[11px] text-[#94A3B8] truncate mt-1">{parts.join(' · ')}</p>
+                      ) : null
                     })()}
-                    {(lead as any).lastComment && (
-                      <p className="text-[10px] text-[#CBD5E1] italic truncate mt-0.5">&ldquo;{(lead as any).lastComment}&rdquo;</p>
-                    )}
                   </div>
-                  <div className="flex items-center gap-1 shrink-0 mt-0.5">
-                    {/* Delete button / inline confirmation */}
-                    {confirmDeleteId === lead.id ? (
-                      <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
-                        <span className="text-[10px] text-[#EF4444] font-medium">Delete?</span>
+                  <div className="flex flex-col items-end gap-2 shrink-0">
+                    <span className={cn('text-[10px] px-2 py-0.5 rounded-full font-medium', LEAD_STATUS_COLORS[lead.status as LeadStatus])}>
+                      {LEAD_STATUS_LABELS[lead.status as LeadStatus]}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      {/* Delete button / inline confirmation */}
+                      {confirmDeleteId === lead.id ? (
+                        <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                          <span className="text-[10px] text-[#EF4444] font-medium">Delete?</span>
+                          <button
+                            onClick={() => deleteLead(lead.id)}
+                            disabled={deletingLeadId === lead.id}
+                            className="px-1.5 py-0.5 bg-[#EF4444] text-white text-[10px] font-semibold rounded disabled:opacity-60 hover:bg-[#DC2626]"
+                          >
+                            {deletingLeadId === lead.id ? '...' : 'Yes'}
+                          </button>
+                          <button
+                            onClick={e => { e.stopPropagation(); setConfirmDeleteId(null) }}
+                            className="px-1.5 py-0.5 border border-[#E2E8F0] text-[#64748B] text-[10px] rounded hover:bg-[#F8FAFC]"
+                          >
+                            No
+                          </button>
+                        </div>
+                      ) : (
                         <button
-                          onClick={() => deleteLead(lead.id)}
-                          disabled={deletingLeadId === lead.id}
-                          className="px-1.5 py-0.5 bg-[#EF4444] text-white text-[10px] font-semibold rounded disabled:opacity-60 hover:bg-[#DC2626]"
+                          onClick={e => { e.stopPropagation(); setConfirmDeleteId(lead.id) }}
+                          className="opacity-0 group-hover:opacity-100 p-1 text-[#94A3B8] hover:text-[#EF4444] transition-all"
+                          title="Delete lead"
                         >
-                          {deletingLeadId === lead.id ? '...' : 'Yes'}
+                          <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />
                         </button>
-                        <button
-                          onClick={e => { e.stopPropagation(); setConfirmDeleteId(null) }}
-                          className="px-1.5 py-0.5 border border-[#E2E8F0] text-[#64748B] text-[10px] rounded hover:bg-[#F8FAFC]"
-                        >
-                          No
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={e => { e.stopPropagation(); setConfirmDeleteId(lead.id) }}
-                        className="opacity-0 group-hover:opacity-100 p-1 text-[#94A3B8] hover:text-[#EF4444] transition-all"
-                        title="Delete lead"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />
-                      </button>
-                    )}
-                    <ChevronRight className="w-4 h-4 text-[#CBD5E1]" />
+                      )}
+                      <ChevronRight className="w-4 h-4 text-[#CBD5E1]" />
+                    </div>
                   </div>
                 </div>
               </div>
