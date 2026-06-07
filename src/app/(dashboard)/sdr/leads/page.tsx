@@ -10,12 +10,14 @@ import { Search, ChevronRight, Plus, Pencil, Send, Trash2 } from 'lucide-react'
 import DateTimePicker from '@/components/ui/DateTimePicker'
 import OrgSearchInput from '@/components/crm/OrgSearchInput'
 import OrgSearchModal from '@/components/crm/OrgSearchModal'
+import { ChannelChip, OUTREACH_CHANNELS, CHANNEL_SHORT } from '@/components/crm/ChannelChip'
 import type { OrgSearchResult } from '@/app/api/organizations/search/route'
 import type { Lead, Organization, InterestSignal, LeadStatus } from '@/types/database'
 
 interface LeadWithOrg extends Lead {
   organization: Organization
   primaryContact?: { name: string | null; phone: string | null } | null
+  lastActivity?: { channels: string[]; outcome: string | null; at: string } | null
 }
 
 export default function SDRLeadsPage() {
@@ -24,6 +26,7 @@ export default function SDRLeadsPage() {
   const [allSDRLeads, setAllSDRLeads] = useState<LeadWithOrg[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+  const [channelFilter, setChannelFilter] = useState<string | null>(null)  // null = All channels
   const [selectedLead, setSelectedLead] = useState<LeadWithOrg | null>(null)
   const [showPanel, setShowPanel] = useState(false)
   const [showAddLead,   setShowAddLead]   = useState(false)
@@ -50,12 +53,30 @@ export default function SDRLeadsPage() {
   useEffect(() => {
     const q = search.toLowerCase()
     setFiltered(leads.filter(l =>
+      (
+        l.organization?.name?.toLowerCase().includes(q) ||
+        l.organization?.location?.toLowerCase().includes(q) ||
+        l.status?.toLowerCase().includes(q) ||
+        l.primaryContact?.name?.toLowerCase().includes(q) ||
+        l.primaryContact?.phone?.toLowerCase().includes(q)
+      ) &&
+      (!channelFilter || (l.lastActivity?.channels ?? []).includes(channelFilter))
+    ))
+  }, [search, leads, channelFilter])
+
+  // Channel chip counts = leads contacted via each channel (within the current search results)
+  const channelCounts = useMemo(() => {
+    const q = search.toLowerCase()
+    const searchOnly = leads.filter(l =>
       l.organization?.name?.toLowerCase().includes(q) ||
       l.organization?.location?.toLowerCase().includes(q) ||
       l.status?.toLowerCase().includes(q) ||
       l.primaryContact?.name?.toLowerCase().includes(q) ||
       l.primaryContact?.phone?.toLowerCase().includes(q)
-    ))
+    )
+    const counts: Record<string, number> = { __all: searchOnly.length }
+    OUTREACH_CHANNELS.forEach(ch => { counts[ch] = searchOnly.filter(l => (l.lastActivity?.channels ?? []).includes(ch)).length })
+    return counts
   }, [search, leads])
 
   // Statuses that should NOT appear in Assigned Leads (they live in Follow-ups or are handed off)
@@ -174,7 +195,8 @@ export default function SDRLeadsPage() {
       <div className={cn('flex flex-col transition-all', showPanel ? 'w-96' : 'flex-1')}>
         <TopBar title="My Leads" subtitle={`${filtered.length} leads`} />
 
-        <div className="p-4 border-b border-[#E2E8F0] bg-white flex gap-2">
+        <div className="p-4 border-b border-[#E2E8F0] bg-white space-y-2.5">
+          <div className="flex gap-2">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#94A3B8]" />
             <input
@@ -265,6 +287,21 @@ export default function SDRLeadsPage() {
             <Plus className="w-3.5 h-3.5" />
             Add Lead
           </button>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] text-[#94A3B8] mr-0.5">Reached out via:</span>
+            <ChannelChip label="All" count={channelCounts.__all} active={channelFilter === null} onClick={() => setChannelFilter(null)} />
+            {OUTREACH_CHANNELS.map(ch => (
+              <ChannelChip
+                key={ch}
+                label={CHANNEL_SHORT[ch]}
+                count={channelCounts[ch]}
+                active={channelFilter === ch}
+                disabled={channelCounts[ch] === 0}
+                onClick={() => setChannelFilter(channelFilter === ch ? null : ch)}
+              />
+            ))}
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto bg-[#F8FAFC]">
@@ -358,9 +395,9 @@ export default function SDRLeadsPage() {
                     <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 0 2-2h2a2 2 0 0 0 2 2" />
                   </svg>
                 </div>
-                <p className="text-[13px] font-medium text-[#374151]">{search ? 'No leads match your search' : 'No leads in your queue'}</p>
-                {search
-                  ? <p className="text-[11px] text-[#94A3B8] mt-1">Try a different search term</p>
+                <p className="text-[13px] font-medium text-[#374151]">{search || channelFilter ? 'No leads match your filters' : 'No leads in your queue'}</p>
+                {search || channelFilter
+                  ? <p className="text-[11px] text-[#94A3B8] mt-1">Try a different search term or channel</p>
                   : <p className="text-[11px] text-[#94A3B8] mt-1">Add a lead manually or wait for assignment</p>
                 }
               </div>
