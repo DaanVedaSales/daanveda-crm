@@ -794,7 +794,7 @@ function LeadDetailPanel({
   onRefresh: () => void
   onDemoBooked: (leadId: string) => void
 }) {
-  const [tab, setTab] = useState<'overview' | 'comments' | 'contacts'>('overview')
+  const [tab, setTab] = useState<'overview' | 'outreach' | 'contacts'>('overview')
   const [activities, setActivities] = useState<any[]>([])
   const [contacts, setContacts] = useState<any[]>([])
   const [comments, setComments] = useState<any[]>([])
@@ -812,7 +812,7 @@ function LeadDetailPanel({
   }, [lead.id])
 
   useEffect(() => {
-    if (tab === 'comments') fetchComments()
+    if (tab === 'outreach') fetchComments()
   }, [tab, lead.id])
 
   function fetchComments() {
@@ -838,6 +838,25 @@ function LeadDetailPanel({
   }
 
   const org = lead.organization
+
+  // ── Outreach Tracker: latest outcome per contact method the KDM actually has ──
+  const METHOD_CHANNEL: Record<string, string> = { Call: 'Cold Call', WhatsApp: 'WhatsApp', Email: 'Cold Email', LinkedIn: 'LinkedIn' }
+  const hasPhone    = contacts.some((c: any) => c.phone)
+  const hasEmail    = contacts.some((c: any) => c.email)
+  const hasLinkedIn = contacts.some((c: any) => c.linkedin_url)
+  const trackerMethods = [
+    ...(hasPhone ? ['Call', 'WhatsApp'] : []),
+    ...(hasEmail ? ['Email'] : []),
+    ...(hasLinkedIn ? ['LinkedIn'] : []),
+  ]
+  // activities arrive newest-first, so the first match per channel is the latest
+  const latestForChannel = (ch: string) => activities.find((a: any) => a.channel === ch)
+
+  // ── Unified timeline: logged activities + free-text notes, newest first ──
+  const timeline = [
+    ...activities.map((a: any) => ({ kind: 'activity' as const, at: a.created_at, channel: a.channel, outcome: a.outcome, note: a.notes, via: a.metadata?.follow_up_via, who: a.user?.name })),
+    ...comments.map((c: any) => ({ kind: 'comment' as const, at: c.created_at, channel: null, outcome: null, note: c.comment, via: null, who: c.user?.name })),
+  ].sort((a, b) => (b.at ?? '').localeCompare(a.at ?? ''))
 
   return (
     <div className="flex flex-col h-full">
@@ -892,7 +911,7 @@ function LeadDetailPanel({
 
       {/* Tabs */}
       <div className="flex border-b border-[#E2E8F0]">
-        {(['overview', 'comments', 'contacts'] as const).map(t => (
+        {(['overview', 'outreach', 'contacts'] as const).map(t => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -921,17 +940,39 @@ function LeadDetailPanel({
           </div>
         )}
 
-        {tab === 'comments' && (
-          <div className="flex flex-col gap-3">
-            {/* Post new comment */}
+        {tab === 'outreach' && (
+          <div className="flex flex-col gap-4">
+            {/* Outreach Tracker — latest outcome per available contact method */}
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8] mb-2">Outreach Tracker</p>
+              {trackerMethods.length === 0 ? (
+                <p className="text-[11px] text-[#94A3B8]">No contact methods on record for this lead&apos;s KDMs.</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {trackerMethods.map(m => {
+                    const a = latestForChannel(METHOD_CHANNEL[m])
+                    return (
+                      <div key={m} className="flex items-center justify-between text-xs bg-[#F8FAFC] border border-[#F1F5F9] rounded-lg px-3 py-2">
+                        <span className="font-medium text-[#0F172A]">{m}</span>
+                        {a ? (
+                          <span className="text-[#64748B]">{a.outcome ?? 'Logged'} · {new Date(a.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span>
+                        ) : (
+                          <span className="text-[#CBD5E1]">Not tried</span>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Add a note */}
             <div className="flex gap-2 items-start">
               <textarea
                 value={commentText}
                 onChange={e => setCommentText(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) postComment()
-                }}
-                placeholder="Add a note or comment... (⌘Enter to post)"
+                onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) postComment() }}
+                placeholder="Add a note... (⌘Enter to post)"
                 rows={2}
                 className="flex-1 px-3 py-2 text-xs border border-[#E2E8F0] rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20 focus:border-[#1A56DB]"
               />
@@ -939,24 +980,31 @@ function LeadDetailPanel({
                 onClick={postComment}
                 disabled={postingComment || !commentText.trim()}
                 className="p-2 bg-[#1A56DB] text-white rounded-lg hover:bg-[#1A4FBF] disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"
-                title="Post comment"
+                title="Post note"
               >
                 <Send className="w-3.5 h-3.5" />
               </button>
             </div>
 
-            {/* Comments list — latest on top */}
-            {comments.length === 0 && (
-              <p className="text-xs text-[#94A3B8] text-center py-4">No comments yet. Add your first note above.</p>
-            )}
-            {comments.map((c: any) => (
-              <div key={c.id} className="bg-[#F8FAFC] rounded-xl p-3 border border-[#F1F5F9]">
-                <p className="text-xs text-[#0F172A] leading-relaxed">{c.comment}</p>
-                <p className="text-[10px] text-[#94A3B8] mt-1.5">
-                  {c.user?.name ?? 'You'} · {new Date(c.created_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true })}
-                </p>
-              </div>
-            ))}
+            {/* Unified timeline — logged activities + notes, newest first */}
+            <div className="flex flex-col gap-2">
+              {timeline.length === 0 && (
+                <p className="text-xs text-[#94A3B8] text-center py-4">No activity yet. Log an outreach or add a note.</p>
+              )}
+              {timeline.map((t, i) => (
+                <div key={i} className="bg-[#F8FAFC] rounded-xl p-3 border border-[#F1F5F9]">
+                  {t.kind === 'activity' && (t.channel || t.outcome) && (
+                    <p className="text-[11px] font-semibold text-[#0F172A]">
+                      {t.channel ?? 'Activity'}{t.outcome ? ` · ${t.outcome}` : ''}{t.via ? ` · next via ${t.via}` : ''}
+                    </p>
+                  )}
+                  {t.note && <p className="text-xs text-[#0F172A] leading-relaxed mt-0.5">{t.note}</p>}
+                  <p className="text-[10px] text-[#94A3B8] mt-1.5">
+                    {t.kind === 'activity' ? 'Activity' : 'Note'} · {t.who ?? 'You'} · {t.at ? new Date(t.at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true }) : ''}
+                  </p>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
