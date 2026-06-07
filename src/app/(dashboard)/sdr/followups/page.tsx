@@ -40,6 +40,7 @@ function LeadExpandedDetail({
   const [rescheduleDate, setRescheduleDate] = useState(currentCallbackDate?.split('T')[0] ?? '')
   const [rescheduling, setRescheduling] = useState(false)
   const [rescheduled, setRescheduled] = useState(false)
+  const [resetting, setResetting] = useState(false)
   // Follow-up specific comments
   const [comments, setComments] = useState<any[]>([])
   const [commentText, setCommentText] = useState('')
@@ -118,6 +119,21 @@ function LeadExpandedDetail({
     if (res.ok) {
       setRescheduled(true)
       setTimeout(() => onRescheduled(), 800)
+    }
+  }
+
+  // Reset to fresh — return a mistakenly-progressed lead to a clean 'assigned' state in My Leads.
+  // Clears callback/follow-up dates, keeps activity history + interest signal. Lead leaves this queue.
+  async function handleReset() {
+    if (!confirm('Reset this lead to a fresh state?\n\nIt returns to My Leads as a new assigned lead — callback and follow-up dates are cleared. Your activity history and notes are kept.')) return
+    setResetting(true)
+    const res = await fetch(`/api/leads/${leadId}/reset`, { method: 'POST' })
+    if (res.ok) {
+      onRescheduled()  // refreshes the queue; the lead drops out (now status='assigned')
+    } else {
+      const err = await res.json().catch(() => ({}))
+      alert(err.error ?? 'Failed to reset lead. Please try again.')
+      setResetting(false)
     }
   }
 
@@ -286,12 +302,22 @@ function LeadExpandedDetail({
           </button>
         </div>
       ) : (
-        <button
-          onClick={onBookDemo}
-          className="w-full py-2 bg-[#059669] text-white text-xs font-semibold rounded-xl hover:bg-[#047857] transition-colors"
-        >
-          Book Demo
-        </button>
+        <div className="space-y-2">
+          <button
+            onClick={onBookDemo}
+            className="w-full py-2 bg-[#059669] text-white text-xs font-semibold rounded-xl hover:bg-[#047857] transition-colors"
+          >
+            Book Demo
+          </button>
+          <button
+            onClick={handleReset}
+            disabled={resetting}
+            className="w-full py-2 border border-[#E2E8F0] text-[#64748B] text-xs font-medium rounded-xl hover:bg-[#F8FAFC] hover:text-[#0F172A] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            title="Return this lead to My Leads as a fresh assigned lead (keeps activity history)"
+          >
+            {resetting ? 'Resetting…' : 'Reset to fresh'}
+          </button>
+        </div>
       )}
     </div>
   )
