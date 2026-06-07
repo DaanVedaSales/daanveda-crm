@@ -87,10 +87,30 @@ export default function SDRLeadsPage() {
       })
     }
 
+    // Latest activity (channels tried + last outcome) and last note per lead, for the list display
+    const allLeadIds = fullData.map(l => l.id).filter(Boolean)
+    const actMap: Record<string, { channels: string[]; outcome: string | null; at: string }> = {}
+    const commentMap: Record<string, string> = {}
+    if (allLeadIds.length > 0) {
+      const [actRes, cmtRes] = await Promise.all([
+        supabase.from('activities').select('lead_id, channel, outcome, created_at').in('lead_id', allLeadIds).order('created_at', { ascending: false }),
+        supabase.from('lead_comments').select('lead_id, comment, created_at').in('lead_id', allLeadIds).order('created_at', { ascending: false }),
+      ])
+      ;(actRes.data ?? []).forEach((a: any) => {
+        if (!actMap[a.lead_id]) actMap[a.lead_id] = { channels: [], outcome: a.outcome ?? null, at: a.created_at }
+        if (a.channel && !actMap[a.lead_id].channels.includes(a.channel)) actMap[a.lead_id].channels.push(a.channel)
+      })
+      ;(cmtRes.data ?? []).forEach((c: any) => {
+        if (!commentMap[c.lead_id]) commentMap[c.lead_id] = c.comment
+      })
+    }
+
     // All leads with contacts merged in (for workspace-wide search)
     const allWithContacts = fullData.map(l => ({
       ...l,
       primaryContact: contactMap[l.org_id] ?? null,
+      lastActivity: actMap[l.id] ?? null,
+      lastComment: commentMap[l.id] ?? null,
     }))
     setAllSDRLeads(allWithContacts)
 
@@ -283,6 +303,19 @@ export default function SDRLeadsPage() {
                         </span>
                       )}
                     </div>
+                    {(lead as any).lastActivity && (() => {
+                      const SHORT: Record<string, string> = { 'Cold Call': 'Call', 'Cold Email': 'Email' }
+                      const la = (lead as any).lastActivity
+                      const chans = (la.channels ?? []).map((c: string) => SHORT[c] ?? c).join(' · ') || 'Contacted'
+                      return (
+                        <p className="text-[10px] text-[#94A3B8] truncate mt-1">
+                          {chans}{la.outcome ? ` · ${la.outcome}` : ''} · {formatRelativeDate(la.at)}
+                        </p>
+                      )
+                    })()}
+                    {(lead as any).lastComment && (
+                      <p className="text-[10px] text-[#CBD5E1] italic truncate mt-0.5">&ldquo;{(lead as any).lastComment}&rdquo;</p>
+                    )}
                   </div>
                   <div className="flex items-center gap-1 shrink-0 mt-0.5">
                     {/* Delete button / inline confirmation */}
