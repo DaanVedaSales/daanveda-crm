@@ -637,6 +637,10 @@ function ReturnedLeadsSection() {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
   const [pick, setPick] = useState<Record<string, string>>({})
+  // Add-contact modal (Not Interested group): enrich the org with a fresh KDM before reassigning
+  const [addContactFor, setAddContactFor] = useState<{ orgId: string; orgName: string } | null>(null)
+  const [cForm, setCForm] = useState({ name: '', designation: '', phone: '', email: '', is_primary: false })
+  const [cSaving, setCSaving] = useState(false)
 
   useEffect(() => { load() }, [])
 
@@ -665,18 +669,35 @@ function ReturnedLeadsSection() {
     setBusy(null)
   }
 
-  async function confirmBan(leadId: string, orgId: string) {
+  // Confirm an SDR ban request — follows the SAME canonical path as "Mark as Banned" in the
+  // Lead Pool (banOrg): PATCH org { is_banned: true }. The org is then hidden from all SDR/Closer
+  // workspaces, flagged red in org search, and appears in Datasets → Banned Organisations.
+  async function confirmBan(leadId: string, orgId: string, orgName: string) {
     if (!orgId) return
-    if (!confirm('Ban this organisation? It will be hidden everywhere and removed from all workspaces.')) return
+    if (!confirm(`Mark "${orgName}" as a banned organisation?\n\nIt will be hidden from all SDR and Closer workspaces and flagged red in org search. You can unban it from Datasets → Banned Organisations.`)) return
     setBusy(leadId)
     const res = await fetch(`/api/organizations/${orgId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ is_banned: true, ban_reason: 'SDR ban request' }),
+      body: JSON.stringify({ is_banned: true }),
     })
     if (res.ok) setLeads(prev => prev.filter(l => l.id !== leadId))
     else { const d = await res.json().catch(() => ({})); alert(d.error ?? 'Failed to ban.') }
     setBusy(null)
+  }
+
+  // Add a new KDM/contact to a returned org (Not Interested group) before reassigning.
+  async function submitContact() {
+    if (!addContactFor || !cForm.name.trim()) return
+    setCSaving(true)
+    const res = await fetch('/api/contacts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ org_id: addContactFor.orgId, ...cForm }),
+    })
+    if (res.ok) setAddContactFor(null)
+    else { const d = await res.json().catch(() => ({})); alert(d.error ?? 'Failed to add contact.') }
+    setCSaving(false)
   }
 
   const SHORT: Record<string, string> = { 'Cold Call': 'Call', 'Cold Email': 'Email' }
@@ -720,9 +741,19 @@ function ReturnedLeadsSection() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
+                    {g.key === 'not_interested' && (
+                      <button
+                        onClick={() => { setCForm({ name: '', designation: '', phone: '', email: '', is_primary: false }); setAddContactFor({ orgId: l.organization?.id, orgName: l.organization?.name ?? 'this org' }) }}
+                        disabled={busy === l.id || !l.organization?.id}
+                        className="px-2.5 py-1.5 text-[11px] font-semibold text-[#1A56DB] border border-[#BFD3F5] rounded-lg hover:bg-[#EFF4FE] disabled:opacity-50 transition-colors"
+                        title="Add a new contact (KDM) to this org before reassigning"
+                      >
+                        Add contact
+                      </button>
+                    )}
                     {g.key === 'ban_requested' && (
                       <button
-                        onClick={() => confirmBan(l.id, l.organization?.id)}
+                        onClick={() => confirmBan(l.id, l.organization?.id, l.organization?.name ?? 'this org')}
                         disabled={busy === l.id}
                         className="px-2.5 py-1.5 text-[11px] font-semibold text-white bg-[#DC2626] rounded-lg hover:bg-[#B91C1C] disabled:opacity-50 transition-colors"
                       >
@@ -751,6 +782,82 @@ function ReturnedLeadsSection() {
           </div>
         )
       })}
+
+      {/* Add-contact modal — enrich a Not-Interested org with a new KDM before reassigning */}
+      {addContactFor && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+            <h3 className="font-semibold text-[#0F172A]">Add contact</h3>
+            <p className="text-sm text-[#64748B] mt-1">New KDM for <span className="font-medium text-[#0F172A]">{addContactFor.orgName}</span>. Reassign the lead afterwards to try this contact.</p>
+            <div className="mt-4 space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-[#64748B] mb-1">Name <span className="text-red-500">*</span></label>
+                <input
+                  value={cForm.name}
+                  onChange={e => setCForm(f => ({ ...f, name: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20"
+                  placeholder="Contact name"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-[#64748B] mb-1">Designation</label>
+                <input
+                  value={cForm.designation}
+                  onChange={e => setCForm(f => ({ ...f, designation: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20"
+                  placeholder="e.g. Founder, Program Director"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-[#64748B] mb-1">Phone</label>
+                  <input
+                    value={cForm.phone}
+                    onChange={e => setCForm(f => ({ ...f, phone: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20"
+                    placeholder="Phone"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-[#64748B] mb-1">Email</label>
+                  <input
+                    value={cForm.email}
+                    onChange={e => setCForm(f => ({ ...f, email: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20"
+                    placeholder="Email"
+                  />
+                </div>
+              </div>
+              <label className="flex items-center gap-2 text-sm text-[#64748B]">
+                <input
+                  type="checkbox"
+                  checked={cForm.is_primary}
+                  onChange={e => setCForm(f => ({ ...f, is_primary: e.target.checked }))}
+                  className="rounded border-[#E2E8F0]"
+                />
+                Set as primary KDM
+              </label>
+            </div>
+            <div className="flex gap-2 mt-5">
+              <button
+                onClick={submitContact}
+                disabled={cSaving || !cForm.name.trim()}
+                className="flex-1 py-2 bg-[#1A56DB] text-white text-sm font-medium rounded-lg hover:bg-[#1A4FBF] disabled:opacity-60 transition-colors"
+              >
+                {cSaving ? 'Adding…' : 'Add contact'}
+              </button>
+              <button
+                onClick={() => setAddContactFor(null)}
+                disabled={cSaving}
+                className="py-2 px-4 border border-[#E2E8F0] text-sm text-[#64748B] rounded-lg hover:bg-[#F8FAFC] disabled:opacity-60"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
