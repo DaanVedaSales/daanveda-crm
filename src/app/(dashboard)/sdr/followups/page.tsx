@@ -6,8 +6,9 @@ import { createClient } from '@/lib/supabase/client'
 import { LEAD_STATUS_LABELS, LEAD_STATUS_COLORS } from '@/lib/constants'
 import type { LeadStatus } from '@/types/database'
 import { cn } from '@/lib/utils'
-import { CheckCircle, ChevronDown, ChevronUp, Trash2, Send, MessageSquare } from 'lucide-react'
+import { CheckCircle, ChevronDown, ChevronUp, Trash2, Send, MessageSquare, Search } from 'lucide-react'
 import DateTimePicker from '@/components/ui/DateTimePicker'
+import { ChannelChip, OUTREACH_CHANNELS, CHANNEL_SHORT } from '@/components/crm/ChannelChip'
 
 interface FollowupLead {
   id: string
@@ -17,6 +18,8 @@ interface FollowupLead {
   follow_up_date: string | null
   updated_at: string | null
   organization: { name: string; location: string | null; url: string | null; annual_revenue: number | null; team_size: number | null }
+  primaryContact?: { name: string | null; phone: string | null } | null
+  channels?: string[]
 }
 
 // ── Expandable detail for a follow-up lead ────────────────────────────────────
@@ -352,6 +355,8 @@ export default function FollowupsPage() {
   const [leads, setLeads] = useState<FollowupLead[]>([])
   const [loading, setLoading] = useState(true)
   const [autoOpenLeadId, setAutoOpenLeadId] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
+  const [channelFilter, setChannelFilter] = useState<string | null>(null)  // null = All channels
   const supabase = createClient()
 
   useEffect(() => { fetchLeads() }, [])
@@ -378,18 +383,64 @@ export default function FollowupsPage() {
       .order('callback_date', { ascending: true, nullsFirst: false })
 
     // Hide leads whose organisation has been banned (do-not-contact)
-    setLeads(((data ?? []) as unknown as FollowupLead[]).filter(l => !(l as any).organization?.is_banned))
+    const base = ((data ?? []) as unknown as FollowupLead[]).filter(l => !(l as any).organization?.is_banned)
+
+    // Load primary contacts (for search) + outreach channels (for the channel filter)
+    const orgIds = Array.from(new Set(base.map(l => l.org_id)))
+    const leadIds = base.map(l => l.id)
+    const contactMap: Record<string, { name: string | null; phone: string | null }> = {}
+    const channelsByLead: Record<string, string[]> = {}
+    if (leadIds.length > 0) {
+      const [cRes, aRes] = await Promise.all([
+        supabase.from('contacts').select('org_id, name, phone, is_primary').in('org_id', orgIds).order('is_primary', { ascending: false }),
+        supabase.from('activities').select('lead_id, channel').in('lead_id', leadIds),
+      ])
+      ;(cRes.data ?? []).forEach((c: any) => { if (!contactMap[c.org_id]) contactMap[c.org_id] = { name: c.name, phone: c.phone } })
+      ;(aRes.data ?? []).forEach((a: any) => {
+        if (!a.channel) return
+        if (!channelsByLead[a.lead_id]) channelsByLead[a.lead_id] = []
+        if (!channelsByLead[a.lead_id].includes(a.channel)) channelsByLead[a.lead_id].push(a.channel)
+      })
+    }
+
+    setLeads(base.map(l => ({ ...l, primaryContact: contactMap[l.org_id] ?? null, channels: channelsByLead[l.id] ?? [] })))
     setLoading(false)
   }
 
   const today = new Date().toISOString().split('T')[0]
+
+  // Subtitle counts always reflect the FULL queue (independent of search/channel filters)
+  const subNoShow = leads.filter(l => l.status === 'no_show').length
+  const subRegular = leads.filter(l => l.status !== 'no_show')
+  const subOverdue = subRegular.filter(l => l.callback_date && l.callback_date < today).length
+  const subToday = subRegular.filter(l => l.callback_date === today).length
+
+  // In-page search (org / location / KDM name / phone)
+  const q = search.trim().toLowerCase()
+  const searchFiltered = q
+    ? leads.filter(l =>
+        l.organization?.name?.toLowerCase().includes(q) ||
+        l.organization?.location?.toLowerCase().includes(q) ||
+        l.primaryContact?.name?.toLowerCase().includes(q) ||
+        l.primaryContact?.phone?.toLowerCase().includes(q),
+      )
+    : leads
+
+  // Channel chip counts = number of leads contacted via that channel (within the search results)
+  const channelCounts: Record<string, number> = {}
+  OUTREACH_CHANNELS.forEach(ch => { channelCounts[ch] = searchFiltered.filter(l => (l.channels ?? []).includes(ch)).length })
+
+  // Apply the channel filter on top of search
+  const visible = channelFilter ? searchFiltered.filter(l => (l.channels ?? []).includes(channelFilter)) : searchFiltered
+
   // Separate no-show leads — they always appear first as a priority group
-  const noShowLeads = leads.filter(l => l.status === 'no_show')
-  const regularLeads = leads.filter(l => l.status !== 'no_show')
+  const noShowLeads = visible.filter(l => l.status === 'no_show')
+  const regularLeads = visible.filter(l => l.status !== 'no_show')
   const overdue = regularLeads.filter(l => l.callback_date && l.callback_date < today)
   const dueToday = regularLeads.filter(l => l.callback_date === today)
   const upcoming = regularLeads.filter(l => l.callback_date && l.callback_date > today)
   const unscheduled = regularLeads.filter(l => !l.callback_date)
+  const anyVisible = visible.length > 0
 
   if (loading) {
     return (
@@ -582,14 +633,51 @@ export default function FollowupsPage() {
     <div className="flex-1 min-h-0 flex flex-col bg-[#F8FAFC]">
       <TopBar
         title="Follow-up Queue"
-        subtitle={`${leads.length} pending · ${noShowLeads.length > 0 ? `${noShowLeads.length} no-show · ` : ''}${overdue.length} overdue · ${dueToday.length} today`}
+        subtitle={`${leads.length} pending · ${subNoShow > 0 ? `${subNoShow} no-show · ` : ''}${subOverdue} overdue · ${subToday} today`}
       />
+
+      {/* Search + channel filter */}
+      <div className="px-6 pt-4 pb-3 border-b border-[#E2E8F0] bg-white space-y-3">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#94A3B8]" />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search this queue — org, location, contact, phone…"
+            className="w-full pl-9 pr-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20 focus:border-[#1A56DB]"
+          />
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[11px] text-[#94A3B8] mr-0.5">Reached out via:</span>
+          <ChannelChip label="All" count={searchFiltered.length} active={channelFilter === null} onClick={() => setChannelFilter(null)} />
+          {OUTREACH_CHANNELS.map(ch => (
+            <ChannelChip
+              key={ch}
+              label={CHANNEL_SHORT[ch]}
+              count={channelCounts[ch]}
+              active={channelFilter === ch}
+              disabled={channelCounts[ch] === 0}
+              onClick={() => setChannelFilter(channelFilter === ch ? null : ch)}
+            />
+          ))}
+        </div>
+      </div>
+
       <div className="flex-1 p-6 space-y-5 overflow-y-auto animate-in-page">
-        <Section title="No-show · Pending Reschedule" items={noShowLeads} accentColor="#EF4444" />
-        <Section title="Overdue" items={overdue} accentColor="#EF4444" />
-        <Section title="Today" items={dueToday} accentColor="#1A56DB" />
-        <Section title="Upcoming" items={upcoming} accentColor="#64748B" />
-        <Section title="No Date Set" items={unscheduled} accentColor="#94A3B8" />
+        {anyVisible ? (
+          <>
+            <Section title="No-show · Pending Reschedule" items={noShowLeads} accentColor="#EF4444" />
+            <Section title="Overdue" items={overdue} accentColor="#EF4444" />
+            <Section title="Today" items={dueToday} accentColor="#1A56DB" />
+            <Section title="Upcoming" items={upcoming} accentColor="#64748B" />
+            <Section title="No Date Set" items={unscheduled} accentColor="#94A3B8" />
+          </>
+        ) : (
+          <div className="text-center py-12">
+            <p className="text-[13px] font-medium text-[#374151]">No leads match your filters</p>
+            <p className="text-[11px] text-[#94A3B8] mt-1">Try a different search term or channel.</p>
+          </div>
+        )}
       </div>
     </div>
   )
