@@ -115,6 +115,31 @@ export const ACTIVITY_OUTCOMES = [
   { value: 'Other', label: '📝 Other' },
 ]
 
+// ─── Channel-specific outcomes ───────────────────────────────────────────────
+// The outcome options shown in Log Activity depend on the channel used.
+// Referral has no outcome list — conversation notes only.
+export const CHANNEL_OUTCOMES: Record<string, string[]> = {
+  'Cold Call':  ['Not reachable', 'Not interested', 'Banned', 'Call again', 'Other'],
+  'Cold Email': ['Email sent', 'Invalid mail', 'Follow up email 1', 'Follow up email 2', 'Other'],
+  'LinkedIn':   ['Request sent', 'LinkedIn outreach on', 'Not interested', 'Other'],
+  'WhatsApp':   ['Message sent', "Number doesn't exist on WA", 'Follow up message 1 sent', 'Follow up message 2 sent', 'Not interested', 'Incorrect number', 'Other'],
+  'Referral':   [],
+}
+
+// Map a channel to the activity_type enum value (fixes the old hardcoded 'call').
+export const CHANNEL_TO_ACTIVITY_TYPE: Record<string, string> = {
+  'Cold Call':  'call',
+  'Cold Email': 'email',
+  'LinkedIn':   'linkedin',
+  'WhatsApp':   'whatsapp',
+  'Referral':   'note',
+}
+
+// Outcomes that mean "the prospect declined" → routed to not_interested.
+export const NOT_INTERESTED_OUTCOMES = ['Not interested']
+// Outcome that flags an org for an admin ban review.
+export const BANNED_OUTCOME = 'Banned'
+
 // ─── Commission Structure (reference) ────────────────────────────────────────
 // NOTE: the live payout math is computed inline in the SDR/Closer dashboards and
 // /api/team/performance. These constants mirror that structure for reference and

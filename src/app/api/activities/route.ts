@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { CHANNEL_TO_ACTIVITY_TYPE, NOT_INTERESTED_OUTCOMES, BANNED_OUTCOME } from '@/lib/constants'
 
 // POST /api/activities — log an activity
 export async function POST(req: NextRequest) {
@@ -19,14 +20,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Lead or user not found' }, { status: 404 })
   }
 
-  // Map outcome to lead status
-  const statusMap: Record<string, string> = {
-    'Demo Booked': 'demo_booked',
-    'Not Interested': 'not_interested',
-    'Call Again': 'call_again',
-    'Not Reachable': 'not_reachable',
-  }
-  const newStatus = outcome ? statusMap[outcome] : undefined
+  // Resolve activity_type from the channel (fixes the old hardcoded 'call')
+  const resolvedType = CHANNEL_TO_ACTIVITY_TYPE[channel as string] ?? activity_type ?? 'note'
+
+  // Channel-aware outcome → lead status routing:
+  //  - "Demo Booked"           → demo_booked
+  //  - declined (Not interested) → not_interested
+  //  - established + a date set  → follow_up  (established two-way contact → Follow-ups)
+  //  - everything else           → contacted  (logged outbound/failed attempt, stays in My Leads)
+  let newStatus: string | undefined
+  if (outcome === 'Demo Booked') newStatus = 'demo_booked'
+  else if (outcome && NOT_INTERESTED_OUTCOMES.includes(outcome)) newStatus = 'not_interested'
+  else if (outcome === BANNED_OUTCOME) newStatus = undefined  // ban review handled by admin; lead left as-is for now
+  else if (callback_date) newStatus = 'follow_up'
+  else newStatus = 'contacted'
 
   // Insert activity (immutable)
   const { data: activity, error: actError } = await supabase
@@ -35,7 +42,7 @@ export async function POST(req: NextRequest) {
       lead_id,
       org_id: lead.org_id,
       user_id: profile.id,
-      activity_type,
+      activity_type: resolvedType,
       channel,
       outcome,
       notes,

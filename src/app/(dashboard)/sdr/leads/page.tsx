@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import TopBar from '@/components/layout/TopBar'
 import { createClient } from '@/lib/supabase/client'
-import { LEAD_STATUS_LABELS, LEAD_STATUS_COLORS, INTEREST_SIGNAL_LABELS, INTEREST_SIGNAL_COLORS } from '@/lib/constants'
+import { LEAD_STATUS_LABELS, LEAD_STATUS_COLORS, INTEREST_SIGNAL_LABELS, INTEREST_SIGNAL_COLORS, CHANNEL_OUTCOMES, CHANNEL_TO_ACTIVITY_TYPE } from '@/lib/constants'
 import { formatRelativeDate, cn } from '@/lib/utils'
 import { Search, ChevronRight, Plus, Pencil, Send, Trash2 } from 'lucide-react'
 import DateTimePicker from '@/components/ui/DateTimePicker'
@@ -59,7 +59,9 @@ export default function SDRLeadsPage() {
   }, [search, leads])
 
   // Statuses that should NOT appear in Assigned Leads (they live in Follow-ups or are handed off)
-  const EXCLUDE_FROM_ASSIGNED = new Set(['demo_booked', 'call_again', 'not_reachable', 'not_interested'])
+  // Leads that live in Follow-ups (established next step) or have progressed/declined are
+  // hidden from My Leads. 'contacted' (logged outbound/failed attempts) stays in My Leads.
+  const EXCLUDE_FROM_ASSIGNED = new Set(['demo_booked', 'call_again', 'not_reachable', 'not_interested', 'follow_up', 'no_show'])
 
   async function fetchLeads() {
     const { data: user } = await supabase.auth.getUser()
@@ -1252,26 +1254,44 @@ function EditLeadModal({
 
 function LogActivityModal({ leadId, onClose, onSuccess }: { leadId: string; onClose: () => void; onSuccess: () => void }) {
   const [channel, setChannel] = useState('Cold Call')
-  const [outcome, setOutcome] = useState('Call Again')
+  const outcomes = CHANNEL_OUTCOMES[channel] ?? []
+  const [outcome, setOutcome] = useState(outcomes[0] ?? '')
   const [signal, setSignal] = useState('warm')
   const [notes, setNotes] = useState('')
-  const [callbackDate, setCallbackDate] = useState('')
+  const [followUpDate, setFollowUpDate] = useState('')
   const [saving, setSaving] = useState(false)
+
+  const isReferral = channel === 'Referral'
+  // "Call again" means they picked up and asked to be called back → an established next step
+  const requiresDate = outcome === 'Call again'
+
+  function changeChannel(c: string) {
+    setChannel(c)
+    const next = CHANNEL_OUTCOMES[c] ?? []
+    setOutcome(next[0] ?? '')
+    setFollowUpDate('')
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     if (notes.trim().length < 10) return alert('Notes must be at least 10 characters')
+    if (requiresDate && !followUpDate) return alert('Set a follow-up date for "Call again".')
     setSaving(true)
     const res = await fetch('/api/activities', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        lead_id: leadId, activity_type: 'call',
-        channel, outcome, notes, interest_signal: signal,
-        callback_date: outcome === 'Call Again' ? callbackDate : null,
+        lead_id: leadId,
+        activity_type: CHANNEL_TO_ACTIVITY_TYPE[channel] ?? 'note',
+        channel,
+        outcome: isReferral ? undefined : outcome,
+        notes,
+        interest_signal: signal,
+        callback_date: followUpDate || null,
       }),
     })
     if (res.ok) onSuccess()
+    else { const d = await res.json().catch(() => ({})); alert(d.error ?? 'Failed to log activity') }
     setSaving(false)
   }
 
@@ -1282,31 +1302,36 @@ function LogActivityModal({ leadId, onClose, onSuccess }: { leadId: string; onCl
         <form onSubmit={submit} className="space-y-3">
           <div>
             <label className="block text-[10px] font-semibold uppercase tracking-widest text-[#64748B] mb-1">Channel</label>
-            <select value={channel} onChange={e => setChannel(e.target.value)} className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20">
+            <select value={channel} onChange={e => changeChannel(e.target.value)} className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20">
               {['Cold Call','Cold Email','LinkedIn','WhatsApp','Referral'].map(c => <option key={c}>{c}</option>)}
             </select>
           </div>
-          <div>
-            <label className="block text-[10px] font-semibold uppercase tracking-widest text-[#64748B] mb-1">Outcome</label>
-            <select value={outcome} onChange={e => setOutcome(e.target.value)} className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20">
-              {['Not Interested','Call Again','Not Reachable','Other'].map(o => <option key={o}>{o}</option>)}
-            </select>
-          </div>
+          {!isReferral && (
+            <div>
+              <label className="block text-[10px] font-semibold uppercase tracking-widest text-[#64748B] mb-1">Outcome</label>
+              <select value={outcome} onChange={e => setOutcome(e.target.value)} className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20">
+                {outcomes.map(o => <option key={o}>{o}</option>)}
+              </select>
+            </div>
+          )}
           <div>
             <label className="block text-[10px] font-semibold uppercase tracking-widest text-[#64748B] mb-1">Interest Signal</label>
             <select value={signal} onChange={e => setSignal(e.target.value)} className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20">
-              {['hot','warm','cold','dead'].map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
+              {['hot','warm','cold'].map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
             </select>
           </div>
-          {outcome === 'Call Again' && (
+          {!isReferral && (
             <div>
-              <label className="block text-[10px] font-semibold uppercase tracking-widest text-[#64748B] mb-1">Callback Date</label>
-              <input type="date" value={callbackDate} onChange={e => setCallbackDate(e.target.value)} required className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20" />
+              <label className="block text-[10px] font-semibold uppercase tracking-widest text-[#64748B] mb-1">
+                Follow-up date {requiresDate && <span className="text-red-500">*</span>}
+              </label>
+              <input type="date" value={followUpDate} onChange={e => setFollowUpDate(e.target.value)} required={requiresDate} className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20" />
+              <p className="text-[10px] text-[#94A3B8] mt-1">Set a date only if they responded and a next step is scheduled — this moves the lead to Follow-ups. Leave blank to keep it in My Leads.</p>
             </div>
           )}
           <div>
             <label className="block text-[10px] font-semibold uppercase tracking-widest text-[#64748B] mb-1">Conversation Notes <span className="text-red-500">*</span></label>
-            <textarea value={notes} onChange={e => setNotes(e.target.value)} required rows={3} placeholder="What happened in this conversation? (min 10 chars)" className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20 resize-none" />
+            <textarea value={notes} onChange={e => setNotes(e.target.value)} required rows={3} placeholder="What happened? (min 10 chars)" className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20 resize-none" />
           </div>
           <div className="flex gap-2 pt-1">
             <button type="submit" disabled={saving} className="flex-1 py-2 bg-[#1A56DB] text-white text-sm font-medium rounded-lg hover:bg-[#1A4FBF] disabled:opacity-60">
