@@ -8,7 +8,7 @@ import type { LeadStatus } from '@/types/database'
 import { cn, phoneMatches } from '@/lib/utils'
 import { CheckCircle, ChevronDown, ChevronUp, Trash2, Send, MessageSquare, Search } from 'lucide-react'
 import DateTimePicker from '@/components/ui/DateTimePicker'
-import { ChannelChip, OUTREACH_CHANNELS, CHANNEL_SHORT } from '@/components/crm/ChannelChip'
+import { ChannelFilter, OUTREACH_CHANNELS } from '@/components/crm/ChannelChip'
 
 interface FollowupLead {
   id: string
@@ -637,29 +637,18 @@ export default function FollowupsPage() {
       />
 
       {/* Search + channel filter */}
-      <div className="px-6 pt-4 pb-3 border-b border-[#E2E8F0] bg-white space-y-3">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#94A3B8]" />
-          <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Search this queue — org, location, contact, phone…"
-            className="w-full pl-9 pr-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20 focus:border-[#1A56DB]"
-          />
-        </div>
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-[11px] text-[#94A3B8] mr-0.5">Reached out via:</span>
-          <ChannelChip label="All" count={searchFiltered.length} active={channelFilter === null} onClick={() => setChannelFilter(null)} />
-          {OUTREACH_CHANNELS.map(ch => (
-            <ChannelChip
-              key={ch}
-              label={CHANNEL_SHORT[ch]}
-              count={channelCounts[ch]}
-              active={channelFilter === ch}
-              disabled={channelCounts[ch] === 0}
-              onClick={() => setChannelFilter(channelFilter === ch ? null : ch)}
+      <div className="px-6 pt-4 pb-3 border-b border-[#E2E8F0] bg-white">
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#94A3B8]" />
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search this queue — org, location, contact, phone…"
+              className="w-full pl-9 pr-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20 focus:border-[#1A56DB]"
             />
-          ))}
+          </div>
+          <ChannelFilter value={channelFilter} counts={channelCounts} allCount={searchFiltered.length} onChange={setChannelFilter} />
         </div>
       </div>
 

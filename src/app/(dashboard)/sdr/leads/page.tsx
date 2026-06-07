@@ -10,7 +10,7 @@ import { Search, ChevronRight, Plus, Pencil, Send, Trash2 } from 'lucide-react'
 import DateTimePicker from '@/components/ui/DateTimePicker'
 import OrgSearchInput from '@/components/crm/OrgSearchInput'
 import OrgSearchModal from '@/components/crm/OrgSearchModal'
-import { ChannelChip, OUTREACH_CHANNELS, CHANNEL_SHORT } from '@/components/crm/ChannelChip'
+import { ChannelFilter, OUTREACH_CHANNELS } from '@/components/crm/ChannelChip'
 import type { OrgSearchResult } from '@/app/api/organizations/search/route'
 import type { Lead, Organization, InterestSignal, LeadStatus } from '@/types/database'
 
@@ -195,8 +195,7 @@ export default function SDRLeadsPage() {
       <div className={cn('flex flex-col transition-all', showPanel ? 'w-96' : 'flex-1')}>
         <TopBar title="My Leads" subtitle={`${filtered.length} leads`} />
 
-        <div className="p-4 border-b border-[#E2E8F0] bg-white space-y-2.5">
-          <div className="flex gap-2">
+        <div className="p-4 border-b border-[#E2E8F0] bg-white flex gap-2">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#94A3B8]" />
             <input
@@ -287,21 +286,7 @@ export default function SDRLeadsPage() {
             <Plus className="w-3.5 h-3.5" />
             Add Lead
           </button>
-          </div>
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[11px] text-[#94A3B8] mr-0.5">Reached out via:</span>
-            <ChannelChip label="All" count={channelCounts.__all} active={channelFilter === null} onClick={() => setChannelFilter(null)} />
-            {OUTREACH_CHANNELS.map(ch => (
-              <ChannelChip
-                key={ch}
-                label={CHANNEL_SHORT[ch]}
-                count={channelCounts[ch]}
-                active={channelFilter === ch}
-                disabled={channelCounts[ch] === 0}
-                onClick={() => setChannelFilter(channelFilter === ch ? null : ch)}
-              />
-            ))}
-          </div>
+          <ChannelFilter value={channelFilter} counts={channelCounts} allCount={channelCounts.__all} onChange={setChannelFilter} />
         </div>
 
         <div className="flex-1 overflow-y-auto bg-[#F8FAFC]">
