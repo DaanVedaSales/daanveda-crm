@@ -39,6 +39,7 @@ export async function POST(req: NextRequest) {
     location,
     kdm_name,
     kdm_phone,
+    kdm_email,
     kdm_designation,
     deal_value,
     demo_status, // 'scheduled' | 'done' | 'tbd'
@@ -88,6 +89,7 @@ export async function POST(req: NextRequest) {
     org_id: org.id,
     name: kdm_name.trim(),
     phone: kdm_phone?.trim() || null,
+    email: kdm_email?.trim() || null,
     designation: kdm_designation?.trim() || null,
     is_primary: true,
   })

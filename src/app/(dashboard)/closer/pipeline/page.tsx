@@ -1146,6 +1146,7 @@ function AddDealModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
   const [location,      setLocation]      = useState('')
   const [kdmName,       setKdmName]       = useState('')
   const [kdmPhone,      setKdmPhone]      = useState('')
+  const [kdmEmail,      setKdmEmail]      = useState('')
   const [kdmDesignation, setKdmDesig]     = useState('')
   const [dealValue,     setDealValue]     = useState('')
   const [demoStatus,    setDemoStatus]    = useState<'tbd' | 'scheduled' | 'done'>('tbd')
@@ -1161,7 +1162,7 @@ function AddDealModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
     const res = await fetch('/api/deals/manual', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ org_name: orgName, location, kdm_name: kdmName, kdm_phone: kdmPhone, kdm_designation: kdmDesignation, deal_value: dealValue || null, demo_status: demoStatus, demo_date: demoDate || null, sdr_summary: sdrSummary }),
+      body: JSON.stringify({ org_name: orgName, location, kdm_name: kdmName, kdm_phone: kdmPhone, kdm_email: kdmEmail, kdm_designation: kdmDesignation, deal_value: dealValue || null, demo_status: demoStatus, demo_date: demoDate || null, sdr_summary: sdrSummary }),
     })
     if (res.ok) onSuccess()
     else { const d = await res.json(); setError(d.error ?? 'Something went wrong') }
@@ -1230,6 +1231,7 @@ function AddDealModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
               <input value={kdmPhone} onChange={e => setKdmPhone(e.target.value)} placeholder="Phone" className={fieldCls} />
               <input value={kdmDesignation} onChange={e => setKdmDesig(e.target.value)} placeholder="Designation" className={fieldCls} />
             </div>
+            <input type="email" value={kdmEmail} onChange={e => setKdmEmail(e.target.value)} placeholder="Email" className={fieldCls} />
           </section>
 
           {/* Demo Status */}
