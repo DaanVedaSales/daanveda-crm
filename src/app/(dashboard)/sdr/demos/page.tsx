@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import TopBar from '@/components/layout/TopBar'
 import { createClient } from '@/lib/supabase/client'
-import { cn } from '@/lib/utils'
+import { cn, formatIST } from '@/lib/utils'
 import { Bell, BellOff, Clock, CalendarCheck, AlertCircle, ChevronDown, ChevronUp, Trash2, Pencil } from 'lucide-react'
 import DateTimePicker from '@/components/ui/DateTimePicker'
 
@@ -30,8 +30,7 @@ function daysUntil(dateStr: string): number {
 }
 
 function formatDemoDate(dateStr: string): string {
-  const d = new Date(dateStr)
-  return d.toLocaleString('en-IN', {
+  return formatIST(dateStr, {
     weekday: 'short', day: 'numeric', month: 'short',
     hour: '2-digit', minute: '2-digit', hour12: true,
   })

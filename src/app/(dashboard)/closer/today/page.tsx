@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import TopBar from '@/components/layout/TopBar'
 import { createClient } from '@/lib/supabase/client'
 import DateTimePicker from '@/components/ui/DateTimePicker'
-import { cn } from '@/lib/utils'
+import { cn, formatIST, toISTDateString, istDayStart } from '@/lib/utils'
 import { CheckCircle, XCircle, RefreshCw, X, Bell, BellOff, Calendar, ExternalLink, Building2, Users, Banknote, Tag, AlertCircle, Target, Trash2, ChevronDown } from 'lucide-react'
 
 interface DemoWithDetails {
@@ -36,16 +36,21 @@ interface UserOption { id: string; name: string }
 type Filter = 'today' | 'tomorrow' | 'week' | 'all'
 
 function formatTime(d: string) {
-  return new Date(d).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
+  return formatIST(d, { hour: '2-digit', minute: '2-digit', hour12: true })
+}
+
+// Whole-day difference between a demo instant and now, in IST calendar days.
+function istDayDiff(d: string): number {
+  const dateIST = toISTDateString(new Date(d))
+  const todayIST = toISTDateString()
+  return Math.round((Date.parse(`${dateIST}T00:00:00Z`) - Date.parse(`${todayIST}T00:00:00Z`)) / 86400000)
 }
 
 function formatDay(d: string) {
-  const date = new Date(d)
-  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0)
-  const diff = Math.floor((new Date(date.toDateString()).getTime() - todayStart.getTime()) / 86400000)
+  const diff = istDayDiff(d)
   if (diff === 0) return 'Today'
   if (diff === 1) return 'Tomorrow'
-  return date.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })
+  return formatIST(d, { weekday: 'short', day: 'numeric', month: 'short' })
 }
 
 function CardSkeleton() {
@@ -121,7 +126,7 @@ export default function ActionsPage() {
       .eq('closer_id', profile.id)
       .eq('is_deleted', false)
       .in('status', ['scheduled', 'rescheduled'])
-      .gte('demo_date', new Date().toISOString().split('T')[0] + 'T00:00:00')
+      .gte('demo_date', istDayStart(toISTDateString()))
       .order('demo_date', { ascending: true })
 
     // Hide demos whose organisation has been banned (do-not-contact)
@@ -147,10 +152,8 @@ export default function ActionsPage() {
   }
 
   function getFiltered(): DemoWithDetails[] {
-    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0)
     return allDemos.filter(d => {
-      const dDate = new Date(d.demo_date); dDate.setHours(0, 0, 0, 0)
-      const diff = Math.floor((dDate.getTime() - todayStart.getTime()) / 86400000)
+      const diff = istDayDiff(d.demo_date)
       if (filter === 'today') return diff === 0
       if (filter === 'tomorrow') return diff === 1
       if (filter === 'week') return diff <= 7
@@ -543,7 +546,7 @@ function DemoInfoPanel({
               <p className="text-[11px] text-[#94A3B8] mt-0.5">{demo.organization.location}</p>
             )}
             <p className="text-[12px] font-semibold text-[#1A56DB] mt-1.5">
-              {new Date(demo.demo_date).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}
+              {formatIST(demo.demo_date, { weekday: 'short', day: 'numeric', month: 'short' })}
               {' · '}{formatTime(demo.demo_date)}
             </p>
           </div>

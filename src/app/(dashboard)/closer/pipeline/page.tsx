@@ -12,7 +12,7 @@ import DateTimePicker from '@/components/ui/DateTimePicker'
 import OrgSearchInput from '@/components/crm/OrgSearchInput'
 import OrgSearchModal from '@/components/crm/OrgSearchModal'
 import type { OrgSearchResult } from '@/app/api/organizations/search/route'
-import { cn } from '@/lib/utils'
+import { cn, formatIST } from '@/lib/utils'
 
 interface DealWithDetails {
   id: string
@@ -508,7 +508,7 @@ function DealPanel({ deal, contacts, onClose, onUpdate, onDelete }: {
 
   const stageColor = DEAL_STAGE_COLORS[deal.stage]
   const demoDateStr = deal.demo?.demo_date
-    ? new Date(deal.demo.demo_date).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true })
+    ? formatIST(deal.demo.demo_date, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true })
     : null
 
   return (
@@ -1500,7 +1500,7 @@ export default function PipelinePage() {
                         >
                           <p className="text-[12px] font-medium text-[#0F172A]">{deal.organization?.name}</p>
                           <p className="text-[10px] text-[#94A3B8] mt-0.5">
-                            {new Date(deal.demo!.demo_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} · Demo scheduled
+                            {formatIST(deal.demo!.demo_date, { day: 'numeric', month: 'short' })} · Demo scheduled
                           </p>
                         </button>
                       ))}

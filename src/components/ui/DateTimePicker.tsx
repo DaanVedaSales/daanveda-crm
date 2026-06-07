@@ -3,7 +3,7 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronLeft, ChevronRight, Clock } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { cn, formatIST, toISTDateString } from '@/lib/utils'
 
 interface DateTimePickerProps {
   value: string             // ISO datetime string or ''
@@ -16,27 +16,23 @@ interface DateTimePickerProps {
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
 const DAYS   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 
-function toLocalDateStr(d: Date): string {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
+// Wall-clock components of an instant IN IST (India has no DST → fixed +05:30),
+// computed without depending on the device's own timezone.
+function istParts(d: Date): { date: string; h24: number; minute: number } {
+  const ist = new Date(d.getTime() + 5.5 * 60 * 60 * 1000)
+  const date = `${ist.getUTCFullYear()}-${String(ist.getUTCMonth() + 1).padStart(2, '0')}-${String(ist.getUTCDate()).padStart(2, '0')}`
+  return { date, h24: ist.getUTCHours(), minute: ist.getUTCMinutes() }
 }
 
 function parseValue(val: string): { date: string; hour: number; minute: number; ampm: 'AM' | 'PM' } {
   if (!val) return { date: '', hour: 10, minute: 0, ampm: 'AM' }
-  // val is ISO or datetime-local string
+  // val is an ISO instant — read its wall-clock in IST (not the device timezone)
   const d = new Date(val)
   if (isNaN(d.getTime())) return { date: '', hour: 10, minute: 0, ampm: 'AM' }
-  const h24 = d.getHours()
+  const { date, h24, minute } = istParts(d)
   const ampm = h24 >= 12 ? 'PM' : 'AM'
   const hour = h24 % 12 === 0 ? 12 : h24 % 12
-  return {
-    date: toLocalDateStr(d),
-    hour,
-    minute: d.getMinutes(),
-    ampm,
-  }
+  return { date, hour, minute, ampm }
 }
 
 function buildISOString(date: string, hour: number, minute: number, ampm: 'AM' | 'PM'): string {
@@ -44,9 +40,9 @@ function buildISOString(date: string, hour: number, minute: number, ampm: 'AM' |
   const h24 = ampm === 'PM' ? (hour === 12 ? 12 : hour + 12) : (hour === 12 ? 0 : hour)
   const mm = String(minute).padStart(2, '0')
   const hh = String(h24).padStart(2, '0')
-  // Construct as local datetime string — JS treats YYYY-MM-DDTHH:mm:ss as local time,
-  // then .toISOString() converts to UTC so Postgres stores the correct moment.
-  return new Date(`${date}T${hh}:${mm}:00`).toISOString()
+  // Interpret the picked wall-clock as IST (+05:30, India has no DST) so the stored
+  // instant is correct regardless of the user's device timezone.
+  return new Date(`${date}T${hh}:${mm}:00+05:30`).toISOString()
 }
 
 export default function DateTimePicker({ value, onChange, minDate, placeholder = 'Select date & time', className }: DateTimePickerProps) {
@@ -57,10 +53,10 @@ export default function DateTimePicker({ value, onChange, minDate, placeholder =
   const [minute,  setMinute] = useState(parsed.minute)
   const [ampm,    setAmpm]   = useState<'AM' | 'PM'>(parsed.ampm)
 
-  // Calendar view state
-  const today = new Date()
-  const [viewYear,  setViewYear]  = useState(date ? parseInt(date.split('-')[0]) : today.getFullYear())
-  const [viewMonth, setViewMonth] = useState(date ? parseInt(date.split('-')[1]) - 1 : today.getMonth())
+  // Calendar view state (anchored to IST "today", not the device timezone)
+  const istToday = toISTDateString()  // 'YYYY-MM-DD' in IST
+  const [viewYear,  setViewYear]  = useState(date ? parseInt(date.split('-')[0]) : parseInt(istToday.split('-')[0]))
+  const [viewMonth, setViewMonth] = useState(date ? parseInt(date.split('-')[1]) - 1 : parseInt(istToday.split('-')[1]) - 1)
 
   const ref = useRef<HTMLDivElement>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
@@ -165,18 +161,16 @@ export default function DateTimePicker({ value, onChange, minDate, placeholder =
     cells.push({ day: i, month: 'next', dateStr: `${y}-${String(m + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}` })
   }
 
-  const todayStr = toLocalDateStr(today)
+  const todayStr = istToday
 
-  // Display label
+  // Display label — render the picked IST wall-clock
   let displayLabel = placeholder
-  if (date && hour) {
-    const d = new Date(`${date}T${String(ampm === 'PM' ? (hour === 12 ? 12 : hour + 12) : (hour === 12 ? 0 : hour)).toString().padStart(2, '0')}:${String(minute).padStart(2, '0')}`)
-    if (!isNaN(d.getTime())) {
-      displayLabel = d.toLocaleString('en-IN', {
-        weekday: 'short', day: 'numeric', month: 'short',
-        hour: '2-digit', minute: '2-digit', hour12: true,
-      })
-    }
+  const isoForLabel = buildISOString(date, hour, minute, ampm)
+  if (isoForLabel) {
+    displayLabel = formatIST(isoForLabel, {
+      weekday: 'short', day: 'numeric', month: 'short',
+      hour: '2-digit', minute: '2-digit', hour12: true,
+    })
   }
 
   const MINUTE_CHIPS = [0, 15, 30, 45]

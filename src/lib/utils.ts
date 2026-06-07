@@ -65,6 +65,18 @@ export function toISTDateString(instant: Date = new Date()): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: IST_TIMEZONE }).format(instant)
 }
 
+// ── IST display formatting (client-side) ─────────────────────────────────────
+// Format any timestamp (ISO string or Date) for display in IST, regardless of
+// the viewer's device timezone. Use for ALL user-facing date/time rendering so
+// every screen agrees on the wall-clock — the business runs in IST, and devices
+// set to other timezones would otherwise show shifted demo/follow-up times.
+export function formatIST(value: string | Date | null | undefined, opts: Intl.DateTimeFormatOptions): string {
+  if (!value) return ''
+  const d = typeof value === 'string' ? new Date(value) : value
+  if (isNaN(d.getTime())) return ''
+  return new Intl.DateTimeFormat('en-IN', { timeZone: IST_TIMEZONE, ...opts }).format(d)
+}
+
 // IST day boundaries as timestamptz literals — the +05:30 offset makes Postgres
 // compare the correct absolute instant for an IST calendar day.
 export function istDayStart(dateStr: string): string {
