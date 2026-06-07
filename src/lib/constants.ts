@@ -119,10 +119,10 @@ export const ACTIVITY_OUTCOMES = [
 // The outcome options shown in Log Activity depend on the channel used.
 // Referral has no outcome list — conversation notes only.
 export const CHANNEL_OUTCOMES: Record<string, string[]> = {
-  'Cold Call':  ['Not reachable', 'Not interested', 'Banned', 'Call again', 'Other'],
-  'Cold Email': ['Email sent', 'Invalid mail', 'Follow up email 1', 'Follow up email 2', 'Other'],
-  'LinkedIn':   ['Request sent', 'LinkedIn outreach on', 'Not interested', 'Other'],
-  'WhatsApp':   ['Message sent', "Number doesn't exist on WA", 'Follow up message 1 sent', 'Follow up message 2 sent', 'Not interested', 'Incorrect number', 'Other'],
+  'Cold Call':  ['Not reachable', 'Not interested', 'Banned', 'Follow up', 'Other'],
+  'Cold Email': ['Email sent', 'Invalid mail', 'Follow up email 1', 'Follow up email 2', 'Follow up', 'Other'],
+  'LinkedIn':   ['Request sent', 'LinkedIn outreach on', 'Not interested', 'Follow up', 'Other'],
+  'WhatsApp':   ['Message sent', "Number doesn't exist on WA", 'Follow up message 1 sent', 'Follow up message 2 sent', 'Not interested', 'Incorrect number', 'Follow up', 'Other'],
   'Referral':   [],
 }
 
@@ -139,6 +139,10 @@ export const CHANNEL_TO_ACTIVITY_TYPE: Record<string, string> = {
 export const NOT_INTERESTED_OUTCOMES = ['Not interested']
 // Outcome that flags an org for an admin ban review.
 export const BANNED_OUTCOME = 'Banned'
+// The single outcome that means "they responded and asked to follow up" → Follow-ups.
+export const FOLLOWUP_OUTCOME = 'Follow up'
+// The channel the SDR will use for the next step (captured on a Follow up).
+export const NEXT_STEP_METHODS = ['Call', 'WhatsApp', 'LinkedIn', 'Email']
 
 // ─── Commission Structure (reference) ────────────────────────────────────────
 // NOTE: the live payout math is computed inline in the SDR/Closer dashboards and

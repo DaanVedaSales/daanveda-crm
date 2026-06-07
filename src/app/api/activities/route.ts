@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { CHANNEL_TO_ACTIVITY_TYPE, NOT_INTERESTED_OUTCOMES, BANNED_OUTCOME } from '@/lib/constants'
+import { CHANNEL_TO_ACTIVITY_TYPE, NOT_INTERESTED_OUTCOMES, BANNED_OUTCOME, FOLLOWUP_OUTCOME } from '@/lib/constants'
 
 // POST /api/activities — log an activity
 export async function POST(req: NextRequest) {
   const body = await req.json()
-  const { lead_id, activity_type, channel, outcome, notes, interest_signal, callback_date, follow_up_date } = body
+  const { lead_id, activity_type, channel, outcome, notes, interest_signal, callback_date, follow_up_date, follow_up_via } = body
 
   if (!lead_id || !activity_type) {
     return NextResponse.json({ error: 'lead_id and activity_type are required' }, { status: 400 })
@@ -32,8 +32,8 @@ export async function POST(req: NextRequest) {
   if (outcome === 'Demo Booked') newStatus = 'demo_booked'
   else if (outcome && NOT_INTERESTED_OUTCOMES.includes(outcome)) newStatus = 'not_interested'
   else if (outcome === BANNED_OUTCOME) newStatus = undefined  // ban review handled by admin; lead left as-is for now
-  else if (callback_date) newStatus = 'follow_up'
-  else newStatus = 'contacted'
+  else if (outcome === FOLLOWUP_OUTCOME) newStatus = 'follow_up'  // they responded & asked to follow up → Follow-ups
+  else newStatus = 'contacted'  // logged outbound/failed attempt → stays in My Leads
 
   // Insert activity (immutable)
   const { data: activity, error: actError } = await supabase
@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
       notes,
       old_value: lead.status,
       new_value: newStatus ?? lead.status,
-      metadata: { interest_signal },
+      metadata: { interest_signal, follow_up_via },
     })
     .select()
     .single()

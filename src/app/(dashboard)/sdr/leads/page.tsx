@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import TopBar from '@/components/layout/TopBar'
 import { createClient } from '@/lib/supabase/client'
-import { LEAD_STATUS_LABELS, LEAD_STATUS_COLORS, INTEREST_SIGNAL_LABELS, INTEREST_SIGNAL_COLORS, CHANNEL_OUTCOMES, CHANNEL_TO_ACTIVITY_TYPE } from '@/lib/constants'
+import { LEAD_STATUS_LABELS, LEAD_STATUS_COLORS, INTEREST_SIGNAL_LABELS, INTEREST_SIGNAL_COLORS, CHANNEL_OUTCOMES, CHANNEL_TO_ACTIVITY_TYPE, FOLLOWUP_OUTCOME, NEXT_STEP_METHODS } from '@/lib/constants'
 import { formatRelativeDate, cn } from '@/lib/utils'
 import { Search, ChevronRight, Plus, Pencil, Send, Trash2 } from 'lucide-react'
 import DateTimePicker from '@/components/ui/DateTimePicker'
@@ -1261,9 +1261,14 @@ function LogActivityModal({ leadId, onClose, onSuccess }: { leadId: string; onCl
   const [followUpDate, setFollowUpDate] = useState('')
   const [saving, setSaving] = useState(false)
 
-  const isReferral = channel === 'Referral'
-  // "Call again" means they picked up and asked to be called back → an established next step
-  const requiresDate = outcome === 'Call again'
+  const [nextVia, setNextVia] = useState(NEXT_STEP_METHODS[0])
+
+  const isReferral      = channel === 'Referral'
+  const isFollowUp      = outcome === FOLLOWUP_OUTCOME
+  const isNotInterested = outcome === 'Not interested'
+  // Signal + scheduling only matter when there's an actual response.
+  const showSignal      = isFollowUp || isNotInterested
+  const notesRequired   = isReferral || isFollowUp || isNotInterested || outcome === 'Other'
 
   function changeChannel(c: string) {
     setChannel(c)
@@ -1274,8 +1279,8 @@ function LogActivityModal({ leadId, onClose, onSuccess }: { leadId: string; onCl
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
-    if (notes.trim().length < 10) return alert('Notes must be at least 10 characters')
-    if (requiresDate && !followUpDate) return alert('Set a follow-up date for "Call again".')
+    if (notesRequired && notes.trim().length < 5) return alert('Please add a short note (min 5 characters).')
+    if (isFollowUp && !followUpDate) return alert('Set a follow-up date.')
     setSaving(true)
     const res = await fetch('/api/activities', {
       method: 'POST',
@@ -1286,8 +1291,9 @@ function LogActivityModal({ leadId, onClose, onSuccess }: { leadId: string; onCl
         channel,
         outcome: isReferral ? undefined : outcome,
         notes,
-        interest_signal: signal,
-        callback_date: followUpDate || null,
+        interest_signal: showSignal ? signal : null,
+        callback_date: isFollowUp ? followUpDate : null,
+        follow_up_via: isFollowUp ? nextVia : null,
       }),
     })
     if (res.ok) onSuccess()
@@ -1298,7 +1304,8 @@ function LogActivityModal({ leadId, onClose, onSuccess }: { leadId: string; onCl
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
-        <h3 className="font-semibold text-[#0F172A] mb-4">Log Activity</h3>
+        <h3 className="font-semibold text-[#0F172A] mb-1">Log Activity</h3>
+        <p className="text-[11px] text-[#94A3B8] mb-4">Logged automatically with today&apos;s date &amp; time.</p>
         <form onSubmit={submit} className="space-y-3">
           <div>
             <label className="block text-[10px] font-semibold uppercase tracking-widest text-[#64748B] mb-1">Channel</label>
@@ -1314,24 +1321,38 @@ function LogActivityModal({ leadId, onClose, onSuccess }: { leadId: string; onCl
               </select>
             </div>
           )}
-          <div>
-            <label className="block text-[10px] font-semibold uppercase tracking-widest text-[#64748B] mb-1">Interest Signal</label>
-            <select value={signal} onChange={e => setSignal(e.target.value)} className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20">
-              {['hot','warm','cold'].map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
-            </select>
-          </div>
-          {!isReferral && (
+
+          {/* Follow up → established response: capture the next-step method + date */}
+          {isFollowUp && (
+            <>
+              <div>
+                <label className="block text-[10px] font-semibold uppercase tracking-widest text-[#64748B] mb-1">Next step via</label>
+                <select value={nextVia} onChange={e => setNextVia(e.target.value)} className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20">
+                  {NEXT_STEP_METHODS.map(m => <option key={m}>{m}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-semibold uppercase tracking-widest text-[#64748B] mb-1">Follow-up date <span className="text-red-500">*</span></label>
+                <input type="date" value={followUpDate} onChange={e => setFollowUpDate(e.target.value)} required className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20" />
+              </div>
+            </>
+          )}
+
+          {/* Interest signal only when there's a response (Follow up / Not interested) */}
+          {showSignal && (
             <div>
-              <label className="block text-[10px] font-semibold uppercase tracking-widest text-[#64748B] mb-1">
-                Follow-up date {requiresDate && <span className="text-red-500">*</span>}
-              </label>
-              <input type="date" value={followUpDate} onChange={e => setFollowUpDate(e.target.value)} required={requiresDate} className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20" />
-              <p className="text-[10px] text-[#94A3B8] mt-1">Set a date only if they responded and a next step is scheduled — this moves the lead to Follow-ups. Leave blank to keep it in My Leads.</p>
+              <label className="block text-[10px] font-semibold uppercase tracking-widest text-[#64748B] mb-1">Interest Signal</label>
+              <select value={signal} onChange={e => setSignal(e.target.value)} className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20">
+                {['hot','warm','cold'].map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
+              </select>
             </div>
           )}
+
           <div>
-            <label className="block text-[10px] font-semibold uppercase tracking-widest text-[#64748B] mb-1">Conversation Notes <span className="text-red-500">*</span></label>
-            <textarea value={notes} onChange={e => setNotes(e.target.value)} required rows={3} placeholder="What happened? (min 10 chars)" className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20 resize-none" />
+            <label className="block text-[10px] font-semibold uppercase tracking-widest text-[#64748B] mb-1">
+              {isReferral ? 'Conversation Notes' : 'Notes'} {notesRequired && <span className="text-red-500">*</span>}
+            </label>
+            <textarea value={notes} onChange={e => setNotes(e.target.value)} required={notesRequired} rows={3} placeholder={isReferral ? 'Referral conversation details…' : 'Optional — what happened?'} className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20 resize-none" />
           </div>
           <div className="flex gap-2 pt-1">
             <button type="submit" disabled={saving} className="flex-1 py-2 bg-[#1A56DB] text-white text-sm font-medium rounded-lg hover:bg-[#1A4FBF] disabled:opacity-60">
