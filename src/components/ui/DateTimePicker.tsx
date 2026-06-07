@@ -60,7 +60,7 @@ export default function DateTimePicker({ value, onChange, minDate, placeholder =
 
   const ref = useRef<HTMLDivElement>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
-  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null)
+  const [coords, setCoords] = useState<{ top: number; left: number; maxHeight: number } | null>(null)
 
   // Sync external value changes
   useEffect(() => {
@@ -93,14 +93,28 @@ export default function DateTimePicker({ value, onChange, minDate, placeholder =
     const el = ref.current
     if (!el) return
     const r = el.getBoundingClientRect()
-    const WIDTH = 320, GAP = 6
-    const estHeight = popoverRef.current?.offsetHeight || 440
+    const WIDTH = 320, GAP = 6, MARGIN = 8
+    const vh = window.innerHeight
+    const h = popoverRef.current?.offsetHeight || 440
+
+    // Horizontal: keep within the viewport
     let left = r.left
-    if (left + WIDTH > window.innerWidth - 8) left = Math.max(8, window.innerWidth - WIDTH - 8)
-    const spaceBelow = window.innerHeight - r.bottom
-    const openUp = spaceBelow < estHeight + GAP && r.top > spaceBelow
-    const top = openUp ? Math.max(8, r.top - GAP - estHeight) : r.bottom + GAP
-    setCoords({ top, left })
+    if (left + WIDTH > window.innerWidth - MARGIN) left = Math.max(MARGIN, window.innerWidth - WIDTH - MARGIN)
+
+    // Vertical: open below by default; flip above only when below can't fit AND above
+    // has more room. ALWAYS cap maxHeight to the chosen side's space so the popover is
+    // never clipped off-screen — it scrolls internally when space is tight.
+    const spaceBelow = vh - r.bottom - GAP - MARGIN
+    const spaceAbove = r.top - GAP - MARGIN
+    let top: number, maxHeight: number
+    if (spaceBelow >= h || spaceBelow >= spaceAbove) {
+      top = r.bottom + GAP
+      maxHeight = vh - top - MARGIN
+    } else {
+      maxHeight = Math.min(h, spaceAbove)
+      top = r.top - GAP - maxHeight
+    }
+    setCoords({ top, left, maxHeight })
   }, [])
 
   useLayoutEffect(() => {
@@ -198,10 +212,11 @@ export default function DateTimePicker({ value, onChange, minDate, placeholder =
       {open && typeof document !== 'undefined' && createPortal(
         <div
           ref={popoverRef}
-          className="fixed z-[100] bg-white rounded-2xl border border-[#E2E8F0] shadow-xl w-[320px]"
+          className="fixed z-[100] bg-white rounded-2xl border border-[#E2E8F0] shadow-xl w-[320px] overflow-y-auto"
           style={{
             top: coords?.top ?? -9999,
             left: coords?.left ?? -9999,
+            maxHeight: coords?.maxHeight,
             visibility: coords ? 'visible' : 'hidden',
             boxShadow: '0 8px 32px rgba(15,23,42,0.12)',
           }}
