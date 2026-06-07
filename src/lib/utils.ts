@@ -65,6 +65,26 @@ export function toISTDateString(instant: Date = new Date()): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: IST_TIMEZONE }).format(instant)
 }
 
+// ── Phone search matching ────────────────────────────────────────────────────
+// Stored phone numbers are inconsistently formatted (+91, spaces, no code, landlines).
+// Normalize both sides to digits and substring-match so a query like "975" finds
+// "+91 975…", "91975…", "975 12 345", etc. — and the national number matches a
+// stored number that carries the 91 country code.
+export function normalizePhone(s: string | null | undefined): string {
+  return (s ?? '').replace(/\D/g, '')
+}
+
+export function phoneMatches(stored: string | null | undefined, query: string): boolean {
+  const q = normalizePhone(query)
+  if (!q) return false
+  const s = normalizePhone(stored)
+  if (!s) return false
+  if (s.includes(q)) return true
+  // Stored number carries a leading 91 country code → also match its national part.
+  if (s.length > 10 && s.startsWith('91') && s.slice(2).includes(q)) return true
+  return false
+}
+
 // ── IST display formatting (client-side) ─────────────────────────────────────
 // Format any timestamp (ISO string or Date) for display in IST, regardless of
 // the viewer's device timezone. Use for ALL user-facing date/time rendering so

@@ -5,7 +5,7 @@ import TopBar from '@/components/layout/TopBar'
 import { createClient } from '@/lib/supabase/client'
 import { LEAD_STATUS_LABELS, LEAD_STATUS_COLORS } from '@/lib/constants'
 import type { LeadStatus } from '@/types/database'
-import { cn } from '@/lib/utils'
+import { cn, phoneMatches } from '@/lib/utils'
 import { CheckCircle, ChevronDown, ChevronUp, Trash2, Send, MessageSquare, Search } from 'lucide-react'
 import DateTimePicker from '@/components/ui/DateTimePicker'
 import { ChannelChip, OUTREACH_CHANNELS, CHANNEL_SHORT } from '@/components/crm/ChannelChip'
@@ -422,7 +422,7 @@ export default function FollowupsPage() {
         l.organization?.name?.toLowerCase().includes(q) ||
         l.organization?.location?.toLowerCase().includes(q) ||
         l.primaryContact?.name?.toLowerCase().includes(q) ||
-        l.primaryContact?.phone?.toLowerCase().includes(q),
+        phoneMatches(l.primaryContact?.phone, q),
       )
     : leads
 

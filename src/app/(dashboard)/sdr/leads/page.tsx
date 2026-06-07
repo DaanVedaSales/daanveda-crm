@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import TopBar from '@/components/layout/TopBar'
 import { createClient } from '@/lib/supabase/client'
 import { LEAD_STATUS_LABELS, LEAD_STATUS_COLORS, INTEREST_SIGNAL_LABELS, INTEREST_SIGNAL_COLORS, CHANNEL_OUTCOMES, CHANNEL_TO_ACTIVITY_TYPE, FOLLOWUP_OUTCOME, NEXT_STEP_METHODS } from '@/lib/constants'
-import { formatRelativeDate, cn } from '@/lib/utils'
+import { formatRelativeDate, cn, phoneMatches } from '@/lib/utils'
 import { Search, ChevronRight, Plus, Pencil, Send, Trash2 } from 'lucide-react'
 import DateTimePicker from '@/components/ui/DateTimePicker'
 import OrgSearchInput from '@/components/crm/OrgSearchInput'
@@ -58,7 +58,7 @@ export default function SDRLeadsPage() {
         l.organization?.location?.toLowerCase().includes(q) ||
         l.status?.toLowerCase().includes(q) ||
         l.primaryContact?.name?.toLowerCase().includes(q) ||
-        l.primaryContact?.phone?.toLowerCase().includes(q)
+        phoneMatches(l.primaryContact?.phone, q)
       ) &&
       (!channelFilter || (l.lastActivity?.channels ?? []).includes(channelFilter))
     ))
@@ -72,7 +72,7 @@ export default function SDRLeadsPage() {
       l.organization?.location?.toLowerCase().includes(q) ||
       l.status?.toLowerCase().includes(q) ||
       l.primaryContact?.name?.toLowerCase().includes(q) ||
-      l.primaryContact?.phone?.toLowerCase().includes(q)
+      phoneMatches(l.primaryContact?.phone, q)
     )
     const counts: Record<string, number> = { __all: searchOnly.length }
     OUTREACH_CHANNELS.forEach(ch => { counts[ch] = searchOnly.filter(l => (l.lastActivity?.channels ?? []).includes(ch)).length })
@@ -152,7 +152,7 @@ export default function SDRLeadsPage() {
         l.organization?.name?.toLowerCase().includes(q) ||
         l.organization?.location?.toLowerCase().includes(q) ||
         l.primaryContact?.name?.toLowerCase().includes(q) ||
-        l.primaryContact?.phone?.toLowerCase().includes(q)
+        phoneMatches(l.primaryContact?.phone, q)
       )
     }
 
