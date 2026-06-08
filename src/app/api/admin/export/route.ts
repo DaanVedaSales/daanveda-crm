@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { fetchAllRows } from '@/lib/supabase/paginate'
 import { toISTDateString } from '@/lib/utils'
 
 // GET /api/admin/export — download full lead log as CSV (admin only)
@@ -19,34 +20,42 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden: admin access required' }, { status: 403 })
   }
 
-  // Fetch all leads with org, demo (if any), deal (if any), assigned user
-  const { data: leads, error } = await supabase
-    .from('leads')
-    .select(`
-      id,
-      status,
-      phase,
-      created_at,
-      updated_at,
-      follow_up_date,
-      organization:organizations(
-        name, url, location, annual_revenue, team_size,
-        age_years, thematic_areas, linkedin_url, sql_score, sql_score_label
-      ),
-      assigned_user:users!leads_assigned_to_fkey(name, role),
-      demos(
-        id, demo_date, status, sdr_summary, reminder_sent, created_at,
-        sdr:users!demos_sdr_id_fkey(name),
-        closer:users!demos_closer_id_fkey(name)
-      ),
-      deals(
-        id, stage, deal_value, date_won_lost, loss_reason,
-        invoice_status, created_at
-      )
-    `)
-    .order('created_at', { ascending: false })
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  // Fetch ALL leads with org, demo (if any), deal (if any), assigned user —
+  // paged past the ~1000-row PostgREST cap so the export is never truncated.
+  let leads: any[]
+  try {
+    leads = await fetchAllRows((from, to) =>
+      supabase
+        .from('leads')
+        .select(`
+          id,
+          status,
+          phase,
+          created_at,
+          updated_at,
+          follow_up_date,
+          organization:organizations(
+            name, url, location, annual_revenue, team_size,
+            age_years, thematic_areas, linkedin_url, sql_score, sql_score_label
+          ),
+          assigned_user:users!leads_assigned_to_fkey(name, role),
+          demos(
+            id, demo_date, status, sdr_summary, reminder_sent, created_at,
+            sdr:users!demos_sdr_id_fkey(name),
+            closer:users!demos_closer_id_fkey(name)
+          ),
+          deals(
+            id, stage, deal_value, date_won_lost, loss_reason,
+            invoice_status, created_at
+          )
+        `)
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: true })
+        .range(from, to)
+    )
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message }, { status: 500 })
+  }
 
   // Build CSV rows
   const header = [

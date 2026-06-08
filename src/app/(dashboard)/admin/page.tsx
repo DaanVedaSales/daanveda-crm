@@ -471,10 +471,13 @@ export default function AdminDashboardPage() {
       params.set('end', customEnd)
     }
 
-    const [statsRes, funnelRes, leadsRes, usersRes] = await Promise.all([
+    const [statsRes, funnelRes, totalLeadsRes, unassignedRes, usersRes] = await Promise.all([
       fetch(`/api/team/stats?${params}`).then(r => r.json()),
       fetch(`/api/admin/funnel?${params}`).then(r => r.json()),
-      supabase.from('leads').select('id, status, phase'),
+      // Lead KPIs as COUNTS (head:true) — accurate regardless of the ~1000-row fetch cap.
+      // Counts active (non-deleted) leads, matching the Lead Pool + export.
+      supabase.from('leads').select('id', { count: 'exact', head: true }).eq('is_deleted', false),
+      supabase.from('leads').select('id', { count: 'exact', head: true }).eq('is_deleted', false).eq('phase', 'sdr').eq('status', 'new'),
       supabase.from('users')
         .select('id, role, monthly_revenue_target, is_active')
         .eq('is_active', true),
@@ -484,10 +487,9 @@ export default function AdminDashboardPage() {
     setClosers((statsRes.closers ?? []).sort((a: CloserStat, b: CloserStat) => (b.revenue_won ?? 0) - (a.revenue_won ?? 0)))
     setFunnel(funnelRes?.leads_assigned ? funnelRes : null)
 
-    const leads = leadsRes.data ?? []
     const users = usersRes.data ?? []
-    const totalLeads = leads.length
-    const unassignedLeads = leads.filter((l: { phase: string; status: string }) => l.phase === 'sdr' && l.status === 'new').length
+    const totalLeads = totalLeadsRes.count ?? 0
+    const unassignedLeads = unassignedRes.count ?? 0
     const totalRevTarget = users.reduce((s: number, u: { monthly_revenue_target: number | null }) => s + (u.monthly_revenue_target ?? 0), 0)
 
     setOrgKpis({ totalLeads, unassignedLeads, totalRevTarget })

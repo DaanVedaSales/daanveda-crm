@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { fetchAllRows } from '@/lib/supabase/paginate'
 
 // GET /api/leads — filtered list
 export async function GET(req: NextRequest) {
@@ -21,25 +22,31 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid status value' }, { status: 400 })
   }
 
-  let query = supabase
-    .from('leads')
-    .select(`
-      *,
-      organization:organizations(*),
-      assignee:users!leads_assigned_to_fkey(id, name, role)
-    `)
-    .order('updated_at', { ascending: false })
-
-  query = query.eq('is_deleted', false)
-  if (phase) query = query.eq('phase', phase)
-  if (assignedTo) query = query.eq('assigned_to', assignedTo)
-  if (status) query = query.eq('status', status)
-  if (datasetId) query = query.eq('dataset_id', datasetId)
-
-  const { data, error } = await query
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  // Fetch ALL matching leads (paging past the ~1000-row PostgREST cap) so the
+  // admin pool / any unfiltered consumer never silently truncates.
+  let data: any[]
+  try {
+    data = await fetchAllRows((from, to) => {
+      let q = supabase
+        .from('leads')
+        .select(`
+          *,
+          organization:organizations(*),
+          assignee:users!leads_assigned_to_fkey(id, name, role)
+        `)
+        .eq('is_deleted', false)
+      if (phase) q = q.eq('phase', phase)
+      if (assignedTo) q = q.eq('assigned_to', assignedTo)
+      if (status) q = q.eq('status', status)
+      if (datasetId) q = q.eq('dataset_id', datasetId)
+      // Stable order with an id tiebreaker so pages don't overlap/skip.
+      return q.order('updated_at', { ascending: false }).order('id', { ascending: true }).range(from, to)
+    })
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message }, { status: 500 })
+  }
   // Hide leads belonging to banned organisations (do-not-contact)
-  return NextResponse.json((data ?? []).filter((l: any) => !l.organization?.is_banned))
+  return NextResponse.json(data.filter((l: any) => !l.organization?.is_banned))
 }
 
 // POST /api/leads — create lead (admin only, manual entry)
