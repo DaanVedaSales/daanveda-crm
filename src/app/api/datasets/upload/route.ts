@@ -3,6 +3,19 @@ import { createClient } from '@/lib/supabase/server'
 
 const MAX_ROWS_PER_UPLOAD = 5000 // DoS protection
 
+// Build a contacts insert payload from a KDM block (shared by create + enrich paths).
+function contactPayload(orgId: string, k: any, isPrimary: boolean) {
+  return {
+    org_id: orgId,
+    name: String(k.name).slice(0, 255),
+    designation: k.designation ? String(k.designation).slice(0, 100) : null,
+    phone: k.phone ? String(k.phone).slice(0, 20) : null,
+    email: k.email ? String(k.email).slice(0, 255) : null,
+    linkedin_url: k.linkedin ? String(k.linkedin).slice(0, 500) : null,
+    is_primary: isPrimary,
+  }
+}
+
 // POST /api/datasets/upload — bulk create orgs + contacts from CSV rows (admin only)
 export async function POST(req: NextRequest) {
   const supabase = createClient()
@@ -29,21 +42,19 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  let created = 0
-  let skipped = 0
-  const duplicates: string[] = []
-  const errors: string[] = []
+  let created = 0    // brand-new orgs created
+  let enriched = 0   // existing orgs that gained new contacts and/or a lead
+  let skipped = 0    // rows left untouched (no name / existing-with-nothing-new / banned / org insert failed)
+  const duplicates: string[] = []  // existing orgs left unchanged
+  const errors: string[] = []      // per-insert failures (surfaced to the admin, no longer swallowed)
 
   for (const row of rows) {
     const {
       name, url, location, annual_revenue, team_size, thematic_areas,
       age_years, linkedin_url, sql_score_label,
       is_client,
-      // KDM1
       kdm_name, kdm_phone, kdm_email, kdm_designation, kdm_linkedin,
-      // KDM2
       kdm2_name, kdm2_phone, kdm2_email, kdm2_designation, kdm2_linkedin,
-      // KDM3
       kdm3_name, kdm3_phone, kdm3_email, kdm3_designation, kdm3_linkedin,
     } = row
 
@@ -57,20 +68,59 @@ export async function POST(req: NextRequest) {
     const cleanName = name.trim().slice(0, 255)
     if (!cleanName) { skipped++; continue }
 
-    // Duplicate check (case-insensitive org name match)
+    // KDMs present in this row, in order (KDM1 is the primary candidate)
+    const kdms = [
+      { name: kdm_name,  phone: kdm_phone,  email: kdm_email,  designation: kdm_designation,  linkedin: kdm_linkedin },
+      { name: kdm2_name, phone: kdm2_phone, email: kdm2_email, designation: kdm2_designation, linkedin: kdm2_linkedin },
+      { name: kdm3_name, phone: kdm3_phone, email: kdm3_email, designation: kdm3_designation, linkedin: kdm3_linkedin },
+    ].filter(k => k.name && String(k.name).trim())
+
+    // ── Existing org? Enrich it instead of dropping the whole row ──────────────
     const { data: existing } = await supabase
       .from('organizations')
-      .select('id')
+      .select('id, is_banned, is_client')
       .ilike('name', cleanName)
       .limit(1)
-      .single()
+      .maybeSingle()
 
     if (existing) {
-      duplicates.push(cleanName)
-      skipped++
+      // Banned (do-not-contact) → never add contacts or a lead
+      if (existing.is_banned) { duplicates.push(cleanName); skipped++; continue }
+
+      let didEnrich = false
+
+      // Add KDMs that aren't already on the org (dedupe by name, case-insensitive)
+      const { data: existingContacts } = await supabase.from('contacts').select('name').eq('org_id', existing.id)
+      const have = new Set((existingContacts ?? []).map((c: any) => String(c.name ?? '').trim().toLowerCase()))
+      let orgHasNoContacts = (existingContacts ?? []).length === 0
+      for (const k of kdms) {
+        const key = String(k.name).trim().toLowerCase()
+        if (have.has(key)) continue
+        // First KDM becomes primary only if the org currently has no contacts at all.
+        const { error } = await supabase.from('contacts').insert(contactPayload(existing.id, k, orgHasNoContacts))
+        if (error) errors.push(`${cleanName} (KDM ${k.name}): ${error.message}`)
+        else { didEnrich = true; have.add(key); orgHasNoContacts = false }
+      }
+
+      // Ensure a lead exists — only when the org has NO active lead and isn't a client.
+      // (Won't resurrect a deliberately returned/converted lead — those still exist.)
+      if (!existing.is_client) {
+        const { count } = await supabase
+          .from('leads').select('id', { count: 'exact', head: true })
+          .eq('org_id', existing.id).eq('is_deleted', false)
+        if ((count ?? 0) === 0) {
+          const { error } = await supabase.from('leads').insert({ org_id: existing.id, dataset_id, status: 'new', phase: 'sdr' })
+          if (error) errors.push(`${cleanName} (lead): ${error.message}`)
+          else didEnrich = true
+        }
+      }
+
+      if (didEnrich) enriched++
+      else { duplicates.push(cleanName); skipped++ }
       continue
     }
 
+    // ── New org ────────────────────────────────────────────────────────────────
     // Parse thematic_areas — may come as comma-separated string or array
     let thematicArr: string[] = []
     if (Array.isArray(thematic_areas)) thematicArr = thematic_areas
@@ -78,8 +128,7 @@ export async function POST(req: NextRequest) {
       thematicArr = thematic_areas.split(',').map((s: string) => s.trim()).filter(Boolean)
     }
 
-    // Insert organization
-    // sql_score_label is stored as-is from the upload (pre-scored externally)
+    // Insert organization (sql_score_label stored as-is — pre-scored externally)
     const { data: org, error: orgError } = await supabase
       .from('organizations')
       .insert({
@@ -95,68 +144,31 @@ export async function POST(req: NextRequest) {
         sql_score_label: sql_score_label ? String(sql_score_label).slice(0, 50) : null,
         is_client: isClient,
       })
-      .select()
+      .select('id')
       .single()
 
-    if (orgError) { errors.push(`${cleanName}: ${orgError.message}`); continue }
+    if (orgError || !org) { errors.push(`${cleanName}: ${orgError?.message ?? 'org insert failed'}`); skipped++; continue }
 
-    // Insert KDM1 (primary contact)
-    if (kdm_name) {
-      await supabase.from('contacts').insert({
-        org_id: org.id,
-        name: String(kdm_name).slice(0, 255),
-        designation: kdm_designation ? String(kdm_designation).slice(0, 100) : null,
-        phone: kdm_phone ? String(kdm_phone).slice(0, 20) : null,
-        email: kdm_email ? String(kdm_email).slice(0, 255) : null,
-        linkedin_url: kdm_linkedin ? String(kdm_linkedin).slice(0, 500) : null,
-        is_primary: true,
-      })
-    }
-
-    // Insert KDM2 (secondary contact)
-    if (kdm2_name) {
-      await supabase.from('contacts').insert({
-        org_id: org.id,
-        name: String(kdm2_name).slice(0, 255),
-        designation: kdm2_designation ? String(kdm2_designation).slice(0, 100) : null,
-        phone: kdm2_phone ? String(kdm2_phone).slice(0, 20) : null,
-        email: kdm2_email ? String(kdm2_email).slice(0, 255) : null,
-        linkedin_url: kdm2_linkedin ? String(kdm2_linkedin).slice(0, 500) : null,
-        is_primary: false,
-      })
-    }
-
-    // Insert KDM3 (tertiary contact)
-    if (kdm3_name) {
-      await supabase.from('contacts').insert({
-        org_id: org.id,
-        name: String(kdm3_name).slice(0, 255),
-        designation: kdm3_designation ? String(kdm3_designation).slice(0, 100) : null,
-        phone: kdm3_phone ? String(kdm3_phone).slice(0, 20) : null,
-        email: kdm3_email ? String(kdm3_email).slice(0, 255) : null,
-        linkedin_url: kdm3_linkedin ? String(kdm3_linkedin).slice(0, 500) : null,
-        is_primary: false,
-      })
+    // Insert KDMs (KDM1 primary, rest secondary) — failures are reported, not swallowed
+    for (let i = 0; i < kdms.length; i++) {
+      const { error } = await supabase.from('contacts').insert(contactPayload(org.id, kdms[i], i === 0))
+      if (error) errors.push(`${cleanName} (KDM ${kdms[i].name}): ${error.message}`)
     }
 
     // Create lead record (starts in SDR queue) — skip for existing clients
     if (!isClient) {
-      await supabase.from('leads').insert({
-        org_id: org.id,
-        dataset_id,
-        status: 'new',
-        phase: 'sdr',
-      })
+      const { error: leadErr } = await supabase.from('leads').insert({ org_id: org.id, dataset_id, status: 'new', phase: 'sdr' })
+      if (leadErr) errors.push(`${cleanName} (lead): ${leadErr.message}`)
     }
 
     created++
   }
 
-  // Update dataset record count
+  // Record count = brand-new orgs + existing orgs this upload enriched
   await supabase
     .from('datasets')
-    .update({ total_records: created })
+    .update({ total_records: created + enriched })
     .eq('id', dataset_id)
 
-  return NextResponse.json({ created, skipped, duplicates, errors })
+  return NextResponse.json({ created, enriched, skipped, duplicates, errors })
 }

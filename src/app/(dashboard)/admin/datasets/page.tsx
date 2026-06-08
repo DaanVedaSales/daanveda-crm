@@ -508,7 +508,7 @@ export default function DatasetsPage() {
   const [columnMap, setColumnMap] = useState<Record<string, string>>({})
 
   const [uploading, setUploading] = useState(false)
-  const [uploadResult, setUploadResult] = useState<{ created: number; skipped: number; duplicates?: string[] } | null>(null)
+  const [uploadResult, setUploadResult] = useState<{ created: number; enriched?: number; skipped: number; duplicates?: string[]; errors?: string[] } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => { fetchDatasets() }, [])
@@ -757,10 +757,15 @@ export default function DatasetsPage() {
               <>
                 {uploadResult && (
                   <div className="p-3 bg-green-50 border border-green-100 rounded-lg text-sm text-green-700">
-                    ✅ {uploadResult.created} records created · {uploadResult.skipped} skipped
+                    ✅ {uploadResult.created} created{(uploadResult.enriched ?? 0) > 0 ? ` · ${uploadResult.enriched} enriched` : ''} · {uploadResult.skipped} skipped
                     {(uploadResult.duplicates ?? []).length > 0 && (
                       <span className="text-[11px] text-green-600 block mt-0.5">
-                        Duplicates: {uploadResult.duplicates?.slice(0, 5).join(', ')}{(uploadResult.duplicates?.length ?? 0) > 5 ? '...' : ''}
+                        Unchanged: {uploadResult.duplicates?.slice(0, 5).join(', ')}{(uploadResult.duplicates?.length ?? 0) > 5 ? '...' : ''}
+                      </span>
+                    )}
+                    {(uploadResult.errors ?? []).length > 0 && (
+                      <span className="text-[11px] text-[#B45309] block mt-1">
+                        {uploadResult.errors?.length} error{(uploadResult.errors?.length ?? 0) > 1 ? 's' : ''}: {uploadResult.errors?.slice(0, 3).join(' · ')}{(uploadResult.errors?.length ?? 0) > 3 ? '…' : ''}
                       </span>
                     )}
                   </div>
