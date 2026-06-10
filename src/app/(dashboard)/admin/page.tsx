@@ -16,6 +16,7 @@ interface SdrStat {
   name: string
   role: 'sdr'
   monthly_demo_target: number | null
+  leads_assigned: number
   demos_booked: number
   demos_attended: number
   leads_reached_out: number
@@ -228,6 +229,7 @@ function SdrPanel({ sdr, onClose }: { sdr: SdrStat; onClose: () => void }) {
               <p className="text-[10px] font-semibold text-[#64748B] uppercase tracking-wider">Outreach</p>
             </div>
             <div className="divide-y divide-[#F1F5F9]">
+              <StatRow label="Leads Assigned" value={sdr.leads_assigned} />
               <StatRow label="Leads Reached Out" value={sdr.leads_reached_out} />
               <StatRow label="Cold Call → Demo %" value={sdr.cold_call_to_demo_pct !== null ? `${sdr.cold_call_to_demo_pct}%` : '—'} />
             </div>
@@ -573,7 +575,7 @@ export default function AdminDashboardPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-[#F8FAFC] border-b border-[#F1F5F9]">
-                  {['SDR', 'Booked', 'Done', 'Not Shown', 'Show-up %', 'Achievement %', 'Status', ''].map((h, i) => (
+                  {['SDR', 'Leads', 'Booked', 'Done', 'Not Shown', 'Show-up %', 'Achievement %', 'Status', ''].map((h, i) => (
                     <th key={i} className={cn('px-4 py-3 text-[10px] font-semibold uppercase tracking-wider text-[#94A3B8]', i === 0 ? 'text-left' : 'text-center')}>
                       {h}
                     </th>
@@ -617,6 +619,7 @@ export default function AdminDashboardPage() {
                             <span className="font-medium text-[13px] text-[#0F172A]">{sdr.name}</span>
                           </div>
                         </td>
+                        <td className="px-4 py-3.5 text-center text-[13px] text-[#64748B]">{sdr.leads_assigned}</td>
                         <td className="px-4 py-3.5 text-center font-semibold text-[#0F172A] text-[13px]">{sdr.demos_booked}</td>
                         <td className="px-4 py-3.5 text-center text-[13px] text-[#64748B]">{sdr.demos_attended}</td>
                         <td className="px-4 py-3.5 text-center text-[13px]">

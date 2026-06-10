@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, Fragment } from 'react'
 import TopBar from '@/components/layout/TopBar'
 import { formatDate } from '@/lib/utils'
-import { Upload, Plus, FileText, Table2, X, Download, Trash2, AlertTriangle } from 'lucide-react'
+import { Upload, Plus, FileText, Table2, X, Download, Trash2, AlertTriangle, ChevronRight } from 'lucide-react'
 import type { Dataset } from '@/types/database'
 import BannedOrgsSection from '@/components/crm/BannedOrgsSection'
 
@@ -518,6 +518,21 @@ export default function DatasetsPage() {
   const [delConfirmName, setDelConfirmName] = useState('')
   const [deleting, setDeleting] = useState(false)
 
+  // Per-dataset assignment breakdown (expandable row)
+  const [expandedDs, setExpandedDs] = useState<string | null>(null)
+  const [breakdowns, setBreakdowns] = useState<Record<string, any[] | 'loading'>>({})
+
+  async function toggleExpand(id: string) {
+    if (expandedDs === id) { setExpandedDs(null); return }
+    setExpandedDs(id)
+    if (!breakdowns[id]) {
+      setBreakdowns(b => ({ ...b, [id]: 'loading' }))
+      const res = await fetch(`/api/datasets/${id}/breakdown`)
+      const data = res.ok ? await res.json() : []
+      setBreakdowns(b => ({ ...b, [id]: data }))
+    }
+  }
+
   async function openDelete(d: Dataset) {
     setDeleteDs(d); setDsStats(null); setDelScope('unassigned'); setDelConfirmName('')
     const res = await fetch(`/api/datasets/${d.id}`)
@@ -826,14 +841,20 @@ export default function DatasetsPage() {
             </thead>
             <tbody className="divide-y divide-[#F1F5F9]">
               {datasets.map(d => (
-                <tr key={d.id} className="hover:bg-[#F8FAFC] group">
-                  <td className="px-5 py-3 font-medium text-[#0F172A]">{d.name}</td>
+                <Fragment key={d.id}>
+                <tr className="hover:bg-[#F8FAFC] group cursor-pointer" onClick={() => toggleExpand(d.id)}>
+                  <td className="px-5 py-3 font-medium text-[#0F172A]">
+                    <span className="inline-flex items-center gap-1.5">
+                      <ChevronRight className={`w-3.5 h-3.5 text-[#94A3B8] transition-transform ${expandedDs === d.id ? 'rotate-90' : ''}`} />
+                      {d.name}
+                    </span>
+                  </td>
                   <td className="px-5 py-3">
                     <span className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full text-xs font-medium">{d.source}</span>
                   </td>
                   <td className="px-5 py-3 text-[#64748B]">{d.total_records ?? 0} records</td>
                   <td className="px-5 py-3 text-xs text-[#94A3B8]">{formatDate(d.created_at)}</td>
-                  <td className="px-5 py-3 text-right">
+                  <td className="px-5 py-3 text-right" onClick={e => e.stopPropagation()}>
                     <button
                       onClick={() => openDelete(d)}
                       className="opacity-0 group-hover:opacity-100 p-1.5 text-[#94A3B8] hover:text-[#EF4444] transition-all"
@@ -843,6 +864,41 @@ export default function DatasetsPage() {
                     </button>
                   </td>
                 </tr>
+                {expandedDs === d.id && (
+                  <tr className="bg-[#F8FAFC]">
+                    <td colSpan={5} className="px-5 py-3">
+                      {breakdowns[d.id] === 'loading' || breakdowns[d.id] === undefined ? (
+                        <p className="text-xs text-[#94A3B8]">Loading breakdown…</p>
+                      ) : (breakdowns[d.id] as any[]).length === 0 ? (
+                        <p className="text-xs text-[#94A3B8]">No leads from this dataset.</p>
+                      ) : (
+                        <div className="rounded-lg border border-[#E2E8F0] overflow-hidden bg-white max-w-xl">
+                          <table className="w-full text-xs">
+                            <thead>
+                              <tr className="bg-[#F1F5F9] text-[#64748B]">
+                                <th className="text-left px-3 py-1.5 font-semibold uppercase tracking-wider text-[10px]">Assignee</th>
+                                <th className="text-right px-3 py-1.5 font-semibold uppercase tracking-wider text-[10px]">Leads</th>
+                                <th className="text-right px-3 py-1.5 font-semibold uppercase tracking-wider text-[10px]">Demos</th>
+                                <th className="text-right px-3 py-1.5 font-semibold uppercase tracking-wider text-[10px]">Won</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-[#F1F5F9]">
+                              {(breakdowns[d.id] as any[]).map((r, i) => (
+                                <tr key={i}>
+                                  <td className="px-3 py-1.5 text-[#0F172A]">{r.assignee_name}{r.role ? <span className="text-[#94A3B8]"> · {r.role}</span> : null}</td>
+                                  <td className="px-3 py-1.5 text-right font-medium text-[#0F172A]">{r.assigned}</td>
+                                  <td className="px-3 py-1.5 text-right text-[#64748B]">{r.demos}</td>
+                                  <td className="px-3 py-1.5 text-right text-[#64748B]">{r.won}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               ))}
               {datasets.length === 0 && !loading && (
                 <tr>

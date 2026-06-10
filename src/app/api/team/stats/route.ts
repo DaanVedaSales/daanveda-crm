@@ -127,6 +127,13 @@ export async function GET(request: Request) {
 
       const { count: leadsReachedOut } = await activitiesQuery
 
+      // 3b. Leads currently assigned to this SDR (their active book — snapshot, not period-scoped)
+      const { count: leadsAssigned } = await supabase
+        .from('leads')
+        .select('id', { count: 'exact', head: true })
+        .eq('assigned_to', sdr.id)
+        .eq('is_deleted', false)
+
       // 4. Deals sourced from this SDR's demos in period (join via demo_id)
       const demoIds = (demosInPeriod ?? []).map(d => d.id)
 
@@ -174,6 +181,7 @@ export async function GET(request: Request) {
         role: 'sdr' as const,
         monthly_demo_target: sdr.monthly_demo_target,
         // Metrics
+        leads_assigned: leadsAssigned ?? 0,
         demos_booked: totalDemos,
         demos_attended: demosAttended ?? 0,
         leads_reached_out: totalLeads,
