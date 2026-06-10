@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import TopBar from '@/components/layout/TopBar'
 import { formatDate } from '@/lib/utils'
-import { Upload, Plus, FileText, Table2, X, Download } from 'lucide-react'
+import { Upload, Plus, FileText, Table2, X, Download, Trash2, AlertTriangle } from 'lucide-react'
 import type { Dataset } from '@/types/database'
 import BannedOrgsSection from '@/components/crm/BannedOrgsSection'
 
@@ -511,6 +511,28 @@ export default function DatasetsPage() {
   const [uploadResult, setUploadResult] = useState<{ created: number; enriched?: number; skipped: number; duplicates?: string[]; errors?: string[] } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  // Dataset hard-delete (admin)
+  const [deleteDs, setDeleteDs] = useState<Dataset | null>(null)
+  const [dsStats, setDsStats] = useState<{ total: number; unassigned: number; assigned: number; in_pipeline: number; won: number } | null>(null)
+  const [delScope, setDelScope] = useState<'unassigned' | 'unprogressed' | 'all'>('unassigned')
+  const [delConfirmName, setDelConfirmName] = useState('')
+  const [deleting, setDeleting] = useState(false)
+
+  async function openDelete(d: Dataset) {
+    setDeleteDs(d); setDsStats(null); setDelScope('unassigned'); setDelConfirmName('')
+    const res = await fetch(`/api/datasets/${d.id}`)
+    setDsStats(res.ok ? await res.json() : { total: 0, unassigned: 0, assigned: 0, in_pipeline: 0, won: 0 })
+  }
+
+  async function confirmDelete() {
+    if (!deleteDs) return
+    setDeleting(true)
+    const res = await fetch(`/api/datasets/${deleteDs.id}?scope=${delScope}`, { method: 'DELETE' })
+    setDeleting(false)
+    if (res.ok) { setDeleteDs(null); fetchDatasets() }
+    else { const e = await res.json().catch(() => ({})); alert(e.error ?? 'Delete failed.') }
+  }
+
   useEffect(() => { fetchDatasets() }, [])
 
   async function fetchDatasets() {
@@ -799,27 +821,110 @@ export default function DatasetsPage() {
                 <th className="text-left px-5 py-3 text-[10px] font-semibold uppercase tracking-widest text-[#64748B]">Source</th>
                 <th className="text-left px-5 py-3 text-[10px] font-semibold uppercase tracking-widest text-[#64748B]">Records</th>
                 <th className="text-left px-5 py-3 text-[10px] font-semibold uppercase tracking-widest text-[#64748B]">Uploaded</th>
+                <th className="px-5 py-3"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#F1F5F9]">
               {datasets.map(d => (
-                <tr key={d.id} className="hover:bg-[#F8FAFC]">
+                <tr key={d.id} className="hover:bg-[#F8FAFC] group">
                   <td className="px-5 py-3 font-medium text-[#0F172A]">{d.name}</td>
                   <td className="px-5 py-3">
                     <span className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full text-xs font-medium">{d.source}</span>
                   </td>
                   <td className="px-5 py-3 text-[#64748B]">{d.total_records ?? 0} records</td>
                   <td className="px-5 py-3 text-xs text-[#94A3B8]">{formatDate(d.created_at)}</td>
+                  <td className="px-5 py-3 text-right">
+                    <button
+                      onClick={() => openDelete(d)}
+                      className="opacity-0 group-hover:opacity-100 p-1.5 text-[#94A3B8] hover:text-[#EF4444] transition-all"
+                      title="Delete dataset"
+                    >
+                      <Trash2 className="w-4 h-4" strokeWidth={1.75} />
+                    </button>
+                  </td>
                 </tr>
               ))}
               {datasets.length === 0 && !loading && (
                 <tr>
-                  <td colSpan={4} className="px-5 py-8 text-center text-[#94A3B8] text-sm">No datasets uploaded yet.</td>
+                  <td colSpan={5} className="px-5 py-8 text-center text-[#94A3B8] text-sm">No datasets uploaded yet.</td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
+
+        {/* ── Dataset hard-delete modal ── */}
+        {deleteDs && (
+          <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+              <div className="flex items-start gap-3 mb-3">
+                <div className="w-9 h-9 rounded-full bg-red-100 flex items-center justify-center shrink-0 mt-0.5">
+                  <AlertTriangle className="w-4 h-4 text-red-500" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-[#0F172A]">Delete dataset</h3>
+                  <p className="text-sm text-[#64748B] mt-0.5">
+                    Permanently removes leads from <span className="font-medium text-[#0F172A]">{deleteDs.name}</span> plus their orgs, contacts, activities, demos &amp; deals. This is a hard delete and cannot be undone.
+                  </p>
+                </div>
+              </div>
+
+              {!dsStats ? (
+                <p className="text-sm text-[#94A3B8] py-4 text-center">Loading breakdown…</p>
+              ) : (
+                <>
+                  <div className="grid grid-cols-5 gap-1.5 text-center mb-4">
+                    {([['Total', dsStats.total], ['Unassigned', dsStats.unassigned], ['Assigned', dsStats.assigned], ['Pipeline', dsStats.in_pipeline], ['Won', dsStats.won]] as [string, number][]).map(([l, n]) => (
+                      <div key={l} className="bg-[#F8FAFC] border border-[#F1F5F9] rounded-lg py-2">
+                        <p className="text-[15px] font-semibold text-[#0F172A]">{n}</p>
+                        <p className="text-[10px] text-[#94A3B8]">{l}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="space-y-2 mb-4">
+                    {([
+                      ['unassigned', 'Unassigned only', `${dsStats.unassigned} pool leads — never touches assigned or pipeline work`, true],
+                      ['unprogressed', 'Un-progressed', `${dsStats.total - dsStats.in_pipeline} leads with no demo/deal — protects the ${dsStats.in_pipeline} in pipeline`, true],
+                      ['all', 'Everything', `all ${dsStats.total} leads incl. ${dsStats.in_pipeline} in pipeline${dsStats.won ? ` + ${dsStats.won} won` : ''} — also removes the dataset record`, false],
+                    ] as ['unassigned' | 'unprogressed' | 'all', string, string, boolean][]).map(([val, label, desc, safe]) => (
+                      <label key={val} className={`flex items-start gap-2 p-2.5 rounded-lg border cursor-pointer ${delScope === val ? (safe ? 'border-[#1A56DB] bg-[#EFF4FE]' : 'border-red-300 bg-red-50') : 'border-[#E2E8F0] hover:bg-[#F8FAFC]'}`}>
+                        <input type="radio" name="delscope" checked={delScope === val} onChange={() => setDelScope(val)} className="mt-0.5" />
+                        <div>
+                          <p className={`text-[13px] font-medium ${safe ? 'text-[#0F172A]' : 'text-[#B91C1C]'}`}>{label}</p>
+                          <p className="text-[11px] text-[#64748B]">{desc}</p>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+
+                  {delScope === 'all' && (
+                    <div className="mb-4">
+                      <p className="text-[11px] text-[#B91C1C] mb-1">Type <span className="font-semibold">{deleteDs.name}</span> to confirm full deletion:</p>
+                      <input
+                        value={delConfirmName}
+                        onChange={e => setDelConfirmName(e.target.value)}
+                        placeholder={deleteDs.name}
+                        className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500/20"
+                      />
+                    </div>
+                  )}
+                </>
+              )}
+
+              <div className="flex gap-2">
+                <button
+                  onClick={confirmDelete}
+                  disabled={deleting || !dsStats || (delScope === 'all' && delConfirmName.trim() !== deleteDs.name)}
+                  className="flex-1 py-2 bg-[#EF4444] text-white text-sm font-medium rounded-lg hover:bg-[#DC2626] disabled:opacity-50 transition-colors"
+                >
+                  {deleting ? 'Deleting…' : 'Delete'}
+                </button>
+                <button onClick={() => setDeleteDs(null)} disabled={deleting} className="py-2 px-4 border border-[#E2E8F0] text-sm text-[#64748B] rounded-lg hover:bg-[#F8FAFC] disabled:opacity-50">Cancel</button>
+              </div>
+            </div>
+          </div>
+        )}
 
       </div>
     </div>

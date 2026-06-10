@@ -21,6 +21,8 @@ export default function AdminLeadPoolPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkSdrId, setBulkSdrId] = useState('')
   const [bulkAssigning, setBulkAssigning] = useState(false)
+  const [bulkDeleting, setBulkDeleting] = useState(false)
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false)
 
   // Drag-select through checkbox column
   const isDraggingSelect = useRef(false)
@@ -88,6 +90,28 @@ export default function AdminLeadPoolPage() {
     const res = await fetch('/api/leads')
     setLeads(await res.json())
     setBulkAssigning(false)
+  }
+
+  // Bulk HARD delete of the selected leads (admin cleanup) — removes them + their
+  // orgs/contacts/activities/demos/deals via /api/leads/bulk-delete.
+  async function handleBulkDelete() {
+    if (selected.size === 0) return
+    setBulkDeleting(true)
+    const res = await fetch('/api/leads/bulk-delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lead_ids: Array.from(selected) }),
+    })
+    if (res.ok) {
+      setSelected(new Set())
+      setConfirmBulkDelete(false)
+      const r = await fetch('/api/leads')
+      setLeads(await r.json())
+    } else {
+      const e = await res.json().catch(() => ({}))
+      alert(e.error ?? 'Delete failed.')
+    }
+    setBulkDeleting(false)
   }
 
   // Checkbox logic
@@ -261,8 +285,29 @@ export default function AdminLeadPoolPage() {
             >
               {bulkAssigning ? 'Assigning...' : 'Assign All'}
             </button>
+            {confirmBulkDelete ? (
+              <div className="flex items-center gap-1.5">
+                <span className="text-[12px]">Delete {selected.size}?</span>
+                <button
+                  onClick={handleBulkDelete}
+                  disabled={bulkDeleting}
+                  className="px-3 py-1.5 bg-white text-[#EF4444] text-sm font-semibold rounded-lg hover:bg-red-50 disabled:opacity-50 transition-colors"
+                  title="Permanently delete the selected leads + their orgs/contacts/pipeline"
+                >
+                  {bulkDeleting ? '...' : 'Yes, delete'}
+                </button>
+                <button onClick={() => setConfirmBulkDelete(false)} disabled={bulkDeleting} className="text-white/80 hover:text-white text-sm px-1">No</button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setConfirmBulkDelete(true)}
+                className="px-4 py-1.5 bg-[#EF4444] text-white text-sm font-semibold rounded-lg hover:bg-[#DC2626] transition-colors"
+              >
+                Delete
+              </button>
+            )}
             <button
-              onClick={() => setSelected(new Set())}
+              onClick={() => { setSelected(new Set()); setConfirmBulkDelete(false) }}
               className="text-white/70 hover:text-white text-sm px-2"
             >
               Clear
