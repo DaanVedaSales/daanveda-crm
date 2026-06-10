@@ -78,7 +78,7 @@ export async function PATCH(
         .from('leads')
         .insert({
           org_id: request.org_id,
-          status: 'new',
+          status: 'assigned',  // assigned to the claiming SDR — not an unassigned pool lead
           phase: 'sdr',
           assigned_to: request.sdr_id,
           assigned_by: adminProfile.id,

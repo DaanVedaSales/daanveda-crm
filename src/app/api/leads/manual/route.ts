@@ -139,7 +139,7 @@ export async function POST(req: NextRequest) {
     .from('leads')
     .insert({
       org_id: org.id,
-      status: 'new',
+      status: 'assigned',  // owned by this SDR from the start — not an unassigned pool lead
       phase: 'sdr',
       assigned_to: profile.id,
       source_type: 'sdr_manual',

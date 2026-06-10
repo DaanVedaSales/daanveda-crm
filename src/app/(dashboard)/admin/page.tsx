@@ -477,7 +477,9 @@ export default function AdminDashboardPage() {
       // Lead KPIs as COUNTS (head:true) — accurate regardless of the ~1000-row fetch cap.
       // Counts active (non-deleted) leads, matching the Lead Pool + export.
       supabase.from('leads').select('id', { count: 'exact', head: true }).eq('is_deleted', false),
-      supabase.from('leads').select('id', { count: 'exact', head: true }).eq('is_deleted', false).eq('phase', 'sdr').eq('status', 'new'),
+      // "Unassigned" = no owner (matches the Lead Pool's definition), not the 'new' label —
+      // so a still-'new'-labelled but assigned lead never counts as unassigned.
+      supabase.from('leads').select('id', { count: 'exact', head: true }).eq('is_deleted', false).eq('phase', 'sdr').is('assigned_to', null),
       supabase.from('users')
         .select('id, role, monthly_revenue_target, is_active')
         .eq('is_active', true),
