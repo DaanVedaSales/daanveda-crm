@@ -741,7 +741,7 @@ function ReturnedLeadsSection() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    {g.key === 'not_interested' && (
+                    {(g.key === 'not_interested' || g.key === 'dead') && (
                       <button
                         onClick={() => { setCForm({ name: '', designation: '', phone: '', email: '', is_primary: false }); setAddContactFor({ orgId: l.organization?.id, orgName: l.organization?.name ?? 'this org' }) }}
                         disabled={busy === l.id || !l.organization?.id}
