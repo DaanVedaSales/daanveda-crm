@@ -479,8 +479,14 @@ function ClaimsSection() {
   const [loading,      setLoading]      = useState(true)
   const [actioning,    setActioning]    = useState<string | null>(null)
   const [notes,        setNotes]        = useState<Record<string, string>>({})
+  const [sdrs,         setSdrs]         = useState<any[]>([])
+  const [enrichReq,    setEnrichReq]    = useState<any | null>(null)
 
   useEffect(() => { loadRequests() }, [claimType, statusFilter])
+  useEffect(() => {
+    fetch('/api/users').then(r => r.json()).then(d =>
+      setSdrs((Array.isArray(d) ? d : []).filter((u: any) => u.role === 'sdr' && u.is_active)))
+  }, [])
 
   async function loadRequests() {
     setLoading(true)
@@ -626,12 +632,12 @@ function ClaimsSection() {
                         {claimType === 'data_enrichment' ? (
                           <>
                             <button
-                              onClick={() => action(req.id, 'fulfilled')}
+                              onClick={() => setEnrichReq(req)}
                               disabled={isActioning}
                               className="flex items-center gap-1 px-3 py-1.5 bg-[#1A56DB] text-white text-[11px] font-semibold rounded-lg hover:bg-[#1e40af] disabled:opacity-60 transition-colors"
                             >
-                              {isActioning ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
-                              Mark Fulfilled
+                              <CheckCircle2 className="w-3 h-3" />
+                              Enrich &amp; Assign
                             </button>
                             <button
                               onClick={() => action(req.id, 'rejected')}
@@ -671,6 +677,175 @@ function ClaimsSection() {
           })}
         </div>
       )}
+
+      {enrichReq && (
+        <EnrichAssignModal
+          request={enrichReq}
+          sdrs={sdrs}
+          onClose={() => setEnrichReq(null)}
+          onDone={() => { setEnrichReq(null); loadRequests() }}
+        />
+      )}
+    </div>
+  )
+}
+
+// Parse the SDR's enrichment note (a " · "-joined "Label: value" string) back into fields.
+function parseEnrichNotes(s: string | null | undefined): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const part of String(s ?? '').split(' · ')) {
+    const i = part.indexOf(': ')
+    if (i < 0) continue
+    const k = part.slice(0, i).trim().toLowerCase()
+    const v = part.slice(i + 2).trim()
+    if (k === 'location') out.location = v
+    else if (k === 'website') out.url = v
+    else if (k === 'org linkedin') out.orgLinkedin = v
+    else if (k === 'contact') out.kdmName = v
+    else if (k === 'designation') out.kdmDesignation = v
+    else if (k === 'contact linkedin') out.kdmLinkedin = v
+    else if (k === 'note') out.note = v
+  }
+  return out
+}
+
+// Admin form to turn a data-enrichment request into a real lead assigned to an SDR.
+// Mirrors the SDR Add-Lead form (org + up to 3 KDMs + notes) — kept self-contained so the
+// SDR form is untouched. Pre-filled from the request; posts to /lead-requests/[id]/fulfill.
+function EnrichAssignModal({ request, sdrs, onClose, onDone }: { request: any; sdrs: any[]; onClose: () => void; onDone: () => void }) {
+  const p = parseEnrichNotes(request.sdr_notes)
+  const [orgName, setOrgName] = useState(request.org_name_requested ?? request.org?.name ?? '')
+  const [location, setLocation] = useState(p.location ?? '')
+  const [orgUrl, setOrgUrl] = useState(p.url ?? '')
+  const [orgLinkedin, setOrgLinkedin] = useState(p.orgLinkedin ?? '')
+  const [thematic, setThematic] = useState('')
+  const [kdmName, setKdmName] = useState(p.kdmName ?? '')
+  const [kdmDesignation, setKdmDesignation] = useState(p.kdmDesignation ?? '')
+  const [kdmPhone, setKdmPhone] = useState('')
+  const [kdmEmail, setKdmEmail] = useState('')
+  const [kdmLinkedin, setKdmLinkedin] = useState(p.kdmLinkedin ?? '')
+  const [showKdm2, setShowKdm2] = useState(false)
+  const [kdm2Name, setKdm2Name] = useState(''); const [kdm2Designation, setKdm2Designation] = useState(''); const [kdm2Phone, setKdm2Phone] = useState(''); const [kdm2Email, setKdm2Email] = useState(''); const [kdm2Linkedin, setKdm2Linkedin] = useState('')
+  const [showKdm3, setShowKdm3] = useState(false)
+  const [kdm3Name, setKdm3Name] = useState(''); const [kdm3Designation, setKdm3Designation] = useState(''); const [kdm3Phone, setKdm3Phone] = useState(''); const [kdm3Email, setKdm3Email] = useState(''); const [kdm3Linkedin, setKdm3Linkedin] = useState('')
+  const [notes, setNotes] = useState(p.note ?? '')
+  const [assignee, setAssignee] = useState(request.sdr_id ?? '')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const field = 'w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20'
+
+  async function submit() {
+    if (!orgName.trim() || !kdmName.trim() || !assignee) { setError('Org name, primary KDM name, and an SDR are required.'); return }
+    setSaving(true); setError('')
+    const res = await fetch(`/api/lead-requests/${request.id}/fulfill`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        org_name: orgName, location, org_url: orgUrl, org_linkedin: orgLinkedin, thematic_areas: thematic,
+        kdm_name: kdmName, kdm_phone: kdmPhone, kdm_email: kdmEmail, kdm_designation: kdmDesignation, kdm_linkedin: kdmLinkedin,
+        ...(showKdm2 && kdm2Name.trim() ? { kdm2_name: kdm2Name, kdm2_phone: kdm2Phone, kdm2_email: kdm2Email, kdm2_designation: kdm2Designation, kdm2_linkedin: kdm2Linkedin } : {}),
+        ...(showKdm3 && kdm3Name.trim() ? { kdm3_name: kdm3Name, kdm3_phone: kdm3Phone, kdm3_email: kdm3Email, kdm3_designation: kdm3Designation, kdm3_linkedin: kdm3Linkedin } : {}),
+        notes, assignee_sdr_id: assignee,
+      }),
+    })
+    setSaving(false)
+    if (res.ok) onDone()
+    else { const d = await res.json().catch(() => ({})); setError(d.error ?? 'Failed to enrich & assign.') }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <div className="px-6 py-4 border-b border-[#F1F5F9] flex items-center justify-between sticky top-0 bg-white z-10">
+          <div>
+            <h3 className="font-semibold text-[#0F172A]">Enrich &amp; Assign</h3>
+            <p className="text-xs text-[#94A3B8] mt-0.5">From {request.sdr?.name ?? 'SDR'}&apos;s request. Fill the details and assign to an SDR.</p>
+          </div>
+          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#64748B] text-xl leading-none">×</button>
+        </div>
+
+        <div className="p-6 space-y-4">
+          <section className="space-y-2.5">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8]">Organisation</p>
+            <input value={orgName} onChange={e => setOrgName(e.target.value)} placeholder="Organisation name *" className={field} />
+            <div className="grid grid-cols-2 gap-2.5">
+              <input value={location} onChange={e => setLocation(e.target.value)} placeholder="Location" className={field} />
+              <input value={orgUrl} onChange={e => setOrgUrl(e.target.value)} placeholder="Website" className={field} />
+            </div>
+            <input value={orgLinkedin} onChange={e => setOrgLinkedin(e.target.value)} placeholder="Org LinkedIn" className={field} />
+            <input value={thematic} onChange={e => setThematic(e.target.value)} placeholder="Thematic areas (comma-separated)" className={field} />
+          </section>
+
+          <section className="space-y-2.5 pt-2 border-t border-[#F1F5F9]">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8]">Key Decision Maker</p>
+            <input value={kdmName} onChange={e => setKdmName(e.target.value)} placeholder="Full name *" className={field} />
+            <div className="grid grid-cols-2 gap-2.5">
+              <input value={kdmPhone} onChange={e => setKdmPhone(e.target.value)} placeholder="Phone" className={field} />
+              <input value={kdmDesignation} onChange={e => setKdmDesignation(e.target.value)} placeholder="Designation" className={field} />
+            </div>
+            <div className="grid grid-cols-2 gap-2.5">
+              <input type="email" value={kdmEmail} onChange={e => setKdmEmail(e.target.value)} placeholder="Email" className={field} />
+              <input value={kdmLinkedin} onChange={e => setKdmLinkedin(e.target.value)} placeholder="LinkedIn" className={field} />
+            </div>
+
+            {showKdm2 ? (
+              <div className="space-y-2.5 pt-1">
+                <input value={kdm2Name} onChange={e => setKdm2Name(e.target.value)} placeholder="KDM 2 — Full name" className={field} />
+                <div className="grid grid-cols-2 gap-2.5">
+                  <input value={kdm2Phone} onChange={e => setKdm2Phone(e.target.value)} placeholder="Phone" className={field} />
+                  <input value={kdm2Designation} onChange={e => setKdm2Designation(e.target.value)} placeholder="Designation" className={field} />
+                </div>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <input type="email" value={kdm2Email} onChange={e => setKdm2Email(e.target.value)} placeholder="Email" className={field} />
+                  <input value={kdm2Linkedin} onChange={e => setKdm2Linkedin(e.target.value)} placeholder="LinkedIn" className={field} />
+                </div>
+                {showKdm3 ? (
+                  <div className="space-y-2.5 pt-1">
+                    <input value={kdm3Name} onChange={e => setKdm3Name(e.target.value)} placeholder="KDM 3 — Full name" className={field} />
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <input value={kdm3Phone} onChange={e => setKdm3Phone(e.target.value)} placeholder="Phone" className={field} />
+                      <input value={kdm3Designation} onChange={e => setKdm3Designation(e.target.value)} placeholder="Designation" className={field} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <input type="email" value={kdm3Email} onChange={e => setKdm3Email(e.target.value)} placeholder="Email" className={field} />
+                      <input value={kdm3Linkedin} onChange={e => setKdm3Linkedin(e.target.value)} placeholder="LinkedIn" className={field} />
+                    </div>
+                  </div>
+                ) : (
+                  <button onClick={() => setShowKdm3(true)} className="text-[11px] text-[#1A56DB] font-medium">+ Add another KDM</button>
+                )}
+              </div>
+            ) : (
+              <button onClick={() => setShowKdm2(true)} className="text-[11px] text-[#1A56DB] font-medium">+ Add another KDM</button>
+            )}
+          </section>
+
+          <section className="space-y-2.5 pt-2 border-t border-[#F1F5F9]">
+            <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Notes (optional)" rows={2} className={`${field} resize-none`} />
+            <div>
+              <label className="block text-[11px] font-medium text-[#64748B] mb-1">Assign to SDR *</label>
+              <select value={assignee} onChange={e => setAssignee(e.target.value)} className={field}>
+                <option value="">Select SDR…</option>
+                {sdrs.map((u: any) => <option key={u.id} value={u.id}>{u.name}{u.id === request.sdr_id ? ' (requester)' : ''}</option>)}
+              </select>
+            </div>
+          </section>
+
+          {error && <p className="text-xs text-[#EF4444]">{error}</p>}
+
+          <div className="flex gap-2 pt-1">
+            <button
+              onClick={submit}
+              disabled={saving || !orgName.trim() || !kdmName.trim() || !assignee}
+              className="flex-1 py-2 bg-[#1A56DB] text-white text-sm font-medium rounded-lg hover:bg-[#1A4FBF] disabled:opacity-50 transition-colors"
+            >
+              {saving ? 'Assigning…' : 'Enrich & Assign'}
+            </button>
+            <button onClick={onClose} disabled={saving} className="py-2 px-4 border border-[#E2E8F0] text-sm text-[#64748B] rounded-lg hover:bg-[#F8FAFC] disabled:opacity-50">Cancel</button>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
