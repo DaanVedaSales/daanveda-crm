@@ -15,8 +15,10 @@ export type OrgSearchStatus =
   | 'in_pipeline'
   | 'demo_booked'
   | 'with_sdr'
+  | 'with_admin'
   | 'claim_pending'
   | 'in_lead_pool'
+  | 'not_in_workspace'
   | 'in_database'
 
 export interface OrgSearchResult {
@@ -30,6 +32,7 @@ export interface OrgSearchResult {
   assignee_name: string | null
   assignee_role: 'sdr' | 'closer' | null
   deal_stage: string | null
+  returned_reason: string | null
   similarity: number
   is_exact_match: boolean
 }
@@ -67,14 +70,14 @@ export async function GET(req: NextRequest) {
     .select(`
       id, name, location, thematic_areas, is_client, is_banned,
       leads(
-        id, phase, status, assigned_to,
+        id, phase, status, assigned_to, is_deleted, returned_reason,
         assigned_user:users!leads_assigned_to_fkey(id, name, role),
         demos(
-          id, status, demo_date,
+          id, status, demo_date, is_deleted,
           closer:users!demos_closer_id_fkey(id, name)
         ),
         deals(
-          id, stage,
+          id, stage, is_deleted,
           closer:users!deals_closer_id_fkey(id, name)
         )
       )
@@ -96,14 +99,14 @@ export async function GET(req: NextRequest) {
             .select(`
               id, name, location, thematic_areas, is_client, is_banned,
               leads(
-                id, phase, status, assigned_to,
+                id, phase, status, assigned_to, is_deleted, returned_reason,
                 assigned_user:users!leads_assigned_to_fkey(id, name, role),
                 demos(
-                  id, status, demo_date,
+                  id, status, demo_date, is_deleted,
                   closer:users!demos_closer_id_fkey(id, name)
                 ),
                 deals(
-                  id, stage,
+                  id, stage, is_deleted,
                   closer:users!deals_closer_id_fkey(id, name)
                 )
               )
@@ -163,6 +166,7 @@ export async function GET(req: NextRequest) {
       thematic_areas: org.thematic_areas,
       is_client: org.is_client ?? false,
       ...status,
+      returned_reason: status.returned_reason ?? null,
       similarity: sim,
       is_exact_match: isExact,
     }
@@ -185,8 +189,11 @@ function deriveStatus(org: any, claimingSDRName: string | null): {
   assignee_name: string | null
   assignee_role: 'sdr' | 'closer' | null
   deal_stage: string | null
+  returned_reason?: string | null
 } {
-  const leads: any[] = org.leads ?? []
+  // Only LIVE (non-deleted) leads define an org's true position. A deleted lead
+  // means it left every workspace, so it must not drive any "assigned" status.
+  const leads: any[] = (org.leads ?? []).filter((l: any) => !l.is_deleted)
 
   // Banned takes absolute priority — surfaced as a do-not-contact warning above everything else
   if (org.is_banned) {
@@ -197,8 +204,8 @@ function deriveStatus(org: any, claimingSDRName: string | null): {
     return { status: 'active_client', status_label: 'Active client', assignee_name: null, assignee_role: null, deal_stage: null }
   }
 
-  const allDeals = leads.flatMap((l: any) => l.deals ?? [])
-  const allDemos = leads.flatMap((l: any) => l.demos ?? [])
+  const allDeals = leads.flatMap((l: any) => (l.deals ?? []).filter((d: any) => !d.is_deleted))
+  const allDemos = leads.flatMap((l: any) => (l.demos ?? []).filter((d: any) => !d.is_deleted))
 
   // Won deal → active client
   const wonDeal = allDeals.find((d: any) => d.stage === 'won')
@@ -260,7 +267,21 @@ function deriveStatus(org: any, claimingSDRName: string | null): {
     }
   }
 
-  // ── Pending claim check (before in_lead_pool / in_database) ──────────────
+  // Returned to admin (not-interested / dead / ban-requested). Lives with admin
+  // until it's re-enriched and reassigned — surfaced distinctly, not as raw data.
+  const returnedLead = leads.find((l: any) => l.phase === 'dead')
+  if (returnedLead) {
+    return {
+      status: 'with_admin',
+      status_label: 'With admin',
+      assignee_name: null,
+      assignee_role: null,
+      deal_stage: null,
+      returned_reason: returnedLead.returned_reason ?? null,
+    }
+  }
+
+  // ── Pending claim check (before in_lead_pool / not_in_workspace) ─────────
   // If an SDR has claimed this org and it's awaiting admin approval, surface that.
   if (claimingSDRName) {
     return {
@@ -278,8 +299,9 @@ function deriveStatus(org: any, claimingSDRName: string | null): {
     return { status: 'in_lead_pool', status_label: 'In lead pool · unassigned', assignee_name: null, assignee_role: null, deal_stage: null }
   }
 
-  // Org exists in database but no active lead
-  return { status: 'in_database', status_label: 'In database', assignee_name: null, assignee_role: null, deal_stage: null }
+  // No live lead anywhere — deleted-away or never worked. Not in any workspace;
+  // re-entry happens only through the existing Add Lead / Request enrichment flows.
+  return { status: 'not_in_workspace', status_label: 'Not in any workspace', assignee_name: null, assignee_role: null, deal_stage: null }
 }
 
 // ── JS trigram similarity approximation ──────────────────────────────────────

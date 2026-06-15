@@ -6,6 +6,13 @@ import { cn } from '@/lib/utils'
 import { ORG_STATUS_CONFIG } from './OrgSearchInput'
 import type { OrgSearchResult } from '@/app/api/organizations/search/route'
 
+// Human-readable reason shown on a "With admin" (returned) org
+const RETURN_REASON_LABEL: Record<string, string> = {
+  not_interested: 'Not interested',
+  dead:           'Dead',
+  ban_requested:  'Ban requested',
+}
+
 interface OrgSearchModalProps {
   role: 'sdr' | 'closer' | 'admin'
   onClose: () => void
@@ -416,6 +423,16 @@ export default function OrgSearchModal({ role, onClose }: OrgSearchModalProps) {
                       </p>
                     )}
 
+                    {/* ── Returned to admin (all roles): reason + enrichment context ── */}
+                    {org.status === 'with_admin' && (
+                      <div className="mt-1.5 flex items-start gap-1.5 text-[11px] text-[#92400E] bg-[#FEF3C7] border border-[#FCD34D] rounded-lg px-2.5 py-1.5">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                        <span>
+                          Returned as {RETURN_REASON_LABEL[org.returned_reason ?? ''] ?? 'returned'} · Admin is enriching fresh data for a stronger re-attempt.
+                        </span>
+                      </div>
+                    )}
+
                     {/* ── SDR: Already claimed by another SDR ── */}
                     {role === 'sdr' && org.status === 'claim_pending' && (
                       <p className="mt-1.5 text-[11px] text-[#92400E] font-medium flex items-center gap-1.5">
@@ -424,15 +441,13 @@ export default function OrgSearchModal({ role, onClose }: OrgSearchModalProps) {
                       </p>
                     )}
 
-                    {/* ── SDR: Claim button for unassigned + in-database orgs ── */}
-                    {role === 'sdr' && (org.status === 'in_lead_pool' || org.status === 'in_database') && (
+                    {/* ── SDR: Claim button for a live unassigned pool lead ── */}
+                    {role === 'sdr' && org.status === 'in_lead_pool' && (
                       <div className="mt-2">
                         {!claim && (
                           <div className="space-y-1.5">
                             <p className="text-[10px] text-[#94A3B8] italic">
-                              {org.status === 'in_lead_pool'
-                                ? 'This lead is unassigned — claim it and admin will assign it to you.'
-                                : 'This org is in our database but has no active lead — claim it to get started.'}
+                              This lead is unassigned — claim it and admin will assign it to you.
                             </p>
                             <input
                               value={claimNotes[org.id] ?? ''}
@@ -466,8 +481,15 @@ export default function OrgSearchModal({ role, onClose }: OrgSearchModalProps) {
                       </div>
                     )}
 
+                    {/* ── SDR: not in any workspace — point to existing re-entry flows ── */}
+                    {role === 'sdr' && org.status === 'not_in_workspace' && (
+                      <p className="mt-1 text-[10px] text-[#94A3B8] italic">
+                        Not in anyone&apos;s workspace. Use &ldquo;Request data enrichment&rdquo; below if you need it.
+                      </p>
+                    )}
+
                     {/* ── SDR: context notes for locked statuses ── */}
-                    {role === 'sdr' && !['in_lead_pool', 'in_database', 'claim_pending', 'banned'].includes(org.status) && (
+                    {role === 'sdr' && !['in_lead_pool', 'not_in_workspace', 'with_admin', 'in_database', 'claim_pending', 'banned'].includes(org.status) && (
                       <p className="mt-1 text-[10px] text-[#94A3B8] italic">
                         {org.status === 'active_client'  && 'This organisation is already a DaanVeda client.'}
                         {org.status === 'with_sdr'       && `Being worked by ${org.assignee_name ?? 'another SDR'}.`}
