@@ -72,23 +72,23 @@ export async function GET(request: Request) {
   ] = await Promise.all([
     // Stage 1: Total leads assigned in period
     applyRange(
-      supabase.from('leads').select('id', { count: 'exact', head: true }).not('assigned_to', 'is', null),
+      supabase.from('leads').select('id', { count: 'exact', head: true }).eq('is_deleted', false).not('assigned_to', 'is', null),
       'created_at'
     ),
     // Stage 1 by source: admin_pool (default — from dataset uploads)
     // Scoped to assigned leads so the source breakdown reconciles with `total`.
     applyRange(
-      supabase.from('leads').select('id', { count: 'exact', head: true }).not('assigned_to', 'is', null).eq('source_type', 'admin_pool'),
+      supabase.from('leads').select('id', { count: 'exact', head: true }).eq('is_deleted', false).not('assigned_to', 'is', null).eq('source_type', 'admin_pool'),
       'created_at'
     ),
     // Stage 1 by source: sdr_manual (SDR added via /leads/manual)
     applyRange(
-      supabase.from('leads').select('id', { count: 'exact', head: true }).not('assigned_to', 'is', null).eq('source_type', 'sdr_manual'),
+      supabase.from('leads').select('id', { count: 'exact', head: true }).eq('is_deleted', false).not('assigned_to', 'is', null).eq('source_type', 'sdr_manual'),
       'created_at'
     ),
     // Stage 1 by source: sdr_claim (SDR claimed from lead pool, admin approved)
     applyRange(
-      supabase.from('leads').select('id', { count: 'exact', head: true }).not('assigned_to', 'is', null).eq('source_type', 'sdr_claim'),
+      supabase.from('leads').select('id', { count: 'exact', head: true }).eq('is_deleted', false).not('assigned_to', 'is', null).eq('source_type', 'sdr_claim'),
       'created_at'
     ),
     // Stage 2: Demos booked in period
@@ -98,17 +98,17 @@ export async function GET(request: Request) {
     ),
     // Stage 3: Demos attended (by demo_date in period)
     applyRange(
-      supabase.from('demos').select('id', { count: 'exact', head: true }).eq('status', 'attended'),
+      supabase.from('demos').select('id', { count: 'exact', head: true }).eq('is_deleted', false).eq('status', 'attended'),
       'demo_date'
     ),
     // Stage 4: Deals won in period
     applyRange(
-      supabase.from('deals').select('id', { count: 'exact', head: true }).in('stage', ['won', 'converted']),
+      supabase.from('deals').select('id', { count: 'exact', head: true }).eq('is_deleted', false).in('stage', ['won', 'converted']),
       'date_won_lost'
     ),
     // Stage 5: Lost + ghosted in period
     applyRange(
-      supabase.from('deals').select('id', { count: 'exact', head: true }).in('stage', ['lost', 'ghosted']),
+      supabase.from('deals').select('id', { count: 'exact', head: true }).eq('is_deleted', false).in('stage', ['lost', 'ghosted']),
       'updated_at'
     ),
   ])
