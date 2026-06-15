@@ -481,15 +481,8 @@ export default function OrgSearchModal({ role, onClose }: OrgSearchModalProps) {
                       </div>
                     )}
 
-                    {/* ── SDR: not in any workspace — point to existing re-entry flows ── */}
-                    {role === 'sdr' && org.status === 'not_in_workspace' && (
-                      <p className="mt-1 text-[10px] text-[#94A3B8] italic">
-                        Not in anyone&apos;s workspace. Use &ldquo;Request data enrichment&rdquo; below if you need it.
-                      </p>
-                    )}
-
                     {/* ── SDR: context notes for locked statuses ── */}
-                    {role === 'sdr' && !['in_lead_pool', 'not_in_workspace', 'with_admin', 'in_database', 'claim_pending', 'banned'].includes(org.status) && (
+                    {role === 'sdr' && !['in_lead_pool', 'with_admin', 'in_database', 'claim_pending', 'banned'].includes(org.status) && (
                       <p className="mt-1 text-[10px] text-[#94A3B8] italic">
                         {org.status === 'active_client'  && 'This organisation is already a DaanVeda client.'}
                         {org.status === 'with_sdr'       && `Being worked by ${org.assignee_name ?? 'another SDR'}.`}

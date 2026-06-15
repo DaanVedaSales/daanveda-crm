@@ -178,7 +178,12 @@ export async function GET(req: NextRequest) {
     return b.similarity - a.similarity
   })
 
-  return NextResponse.json(scored.slice(0, limit))
+  // Orgs with no live presence (only soft-deleted leads) must leave NO trace in
+  // search — no row, no badge — so a deleted org reads as absent. The searcher
+  // re-enters it via Request data enrichment, which reuses the org by name.
+  const visible = scored.filter(s => s.status !== 'not_in_workspace')
+
+  return NextResponse.json(visible.slice(0, limit))
 }
 
 // ── Status derivation (priority order) ───────────────────────────────────────

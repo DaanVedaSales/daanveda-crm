@@ -18,7 +18,6 @@ export const ORG_STATUS_CONFIG: Record<string, { label: string; className: strin
   claim_pending: { label: 'Claimed · Pending', className: 'bg-[#FEF3C7] text-[#92400E] border border-[#FCD34D]' },
   in_lead_pool:  { label: 'Unassigned',        className: 'bg-[#ECFDF5] text-[#047857] border border-[#6EE7B7]' },
   with_admin:    { label: 'With Admin',        className: 'bg-[#FEF3C7] text-[#92400E] border border-[#FCD34D]' },
-  not_in_workspace: { label: 'Not in any workspace', className: 'bg-[#F8FAFC] text-[#64748B] border border-[#E2E8F0]' },
   in_database:   { label: 'Not in Pipeline',   className: 'bg-[#F8FAFC] text-[#64748B] border border-[#E2E8F0]' },
 }
 
