@@ -9,6 +9,7 @@ export async function GET(req: NextRequest) {
   const assignedTo = searchParams.get('assigned_to')
   const status = searchParams.get('status')
   const datasetId = searchParams.get('dataset_id')
+  const enrich = searchParams.get('enrich') === '1'
 
   const supabase = createClient()
 
@@ -46,7 +47,52 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: e.message }, { status: 500 })
   }
   // Hide leads belonging to banned organisations (do-not-contact)
-  return NextResponse.json(data.filter((l: any) => !l.organization?.is_banned))
+  const leads = data.filter((l: any) => !l.organization?.is_banned)
+
+  // Without ?enrich=1 the response is unchanged (e.g. the admin Lead Pool). With it,
+  // attach the primary contact + last activity (+ last comment) to each lead SERVER-SIDE,
+  // so the SDR My Leads list loads in ONE request instead of the browser firing separate
+  // contacts/activities/comments queries (which could stall on the browser connection at
+  // high lead counts). Enrichment is best-effort: a failure returns leads un-enriched.
+  if (!enrich || leads.length === 0) {
+    return NextResponse.json(leads)
+  }
+
+  const orgIds = Array.from(new Set(leads.map((l: any) => l.org_id).filter(Boolean)))
+  const leadIds = leads.map((l: any) => l.id).filter(Boolean)
+  const contactMap: Record<string, { name: string | null; phone: string | null }> = {}
+  const actMap: Record<string, { channels: string[]; outcome: string | null; at: string }> = {}
+  const commentMap: Record<string, string> = {}
+
+  try {
+    const [contactRows, actRows, cmtRows] = await Promise.all([
+      orgIds.length
+        ? fetchAllRows((from, to) => supabase.from('contacts').select('org_id, name, phone').in('org_id', orgIds as string[]).eq('is_primary', true).order('id', { ascending: true }).range(from, to))
+        : Promise.resolve([] as any[]),
+      leadIds.length
+        ? fetchAllRows((from, to) => supabase.from('activities').select('lead_id, channel, outcome, created_at').in('lead_id', leadIds).order('created_at', { ascending: false }).order('id', { ascending: true }).range(from, to))
+        : Promise.resolve([] as any[]),
+      leadIds.length
+        ? fetchAllRows((from, to) => supabase.from('lead_comments').select('lead_id, comment, created_at').in('lead_id', leadIds).order('created_at', { ascending: false }).order('id', { ascending: true }).range(from, to))
+        : Promise.resolve([] as any[]),
+    ])
+    ;(contactRows as any[]).forEach((c: any) => { if (!contactMap[c.org_id]) contactMap[c.org_id] = { name: c.name, phone: c.phone } })
+    ;(actRows as any[]).forEach((a: any) => {
+      if (!actMap[a.lead_id]) actMap[a.lead_id] = { channels: [], outcome: a.outcome ?? null, at: a.created_at }
+      if (a.channel && !actMap[a.lead_id].channels.includes(a.channel)) actMap[a.lead_id].channels.push(a.channel)
+    })
+    ;(cmtRows as any[]).forEach((c: any) => { if (!commentMap[c.lead_id]) commentMap[c.lead_id] = c.comment })
+  } catch {
+    // best-effort — return whatever enrichment we have (possibly none) rather than failing
+  }
+
+  const enriched = leads.map((l: any) => ({
+    ...l,
+    primaryContact: contactMap[l.org_id] ?? null,
+    lastActivity: actMap[l.id] ?? null,
+    lastComment: commentMap[l.id] ?? null,
+  }))
+  return NextResponse.json(enriched)
 }
 
 // POST /api/leads — create lead (admin only, manual entry)

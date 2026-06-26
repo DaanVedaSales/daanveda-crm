@@ -106,7 +106,7 @@ export default function SDRLeadsPage() {
       const timer = setTimeout(() => ac.abort(), 20000)
       let fullData: LeadWithOrg[] = []
       try {
-        const res = await fetch(`/api/leads?assigned_to=${profile.id}`, { signal: ac.signal })
+        const res = await fetch(`/api/leads?assigned_to=${profile.id}&enrich=1`, { signal: ac.signal })
         if (!res.ok) throw new Error(`Leads request failed (${res.status})`)
         const data = await res.json()
         fullData = Array.isArray(data) ? data : []
@@ -114,61 +114,13 @@ export default function SDRLeadsPage() {
         clearTimeout(timer)
       }
 
-      // Primary contacts + last-touch per lead, for the list display and cross-section search.
-      const allOrgIds = fullData.map(l => l.org_id).filter(Boolean)
-      const allLeadIds = fullData.map(l => l.id).filter(Boolean)
-      let contactMap: Record<string, { name: string | null; phone: string | null }> = {}
-      const actMap: Record<string, { channels: string[]; outcome: string | null; at: string }> = {}
-      const commentMap: Record<string, string> = {}
-
-      // Enrichment is BEST-EFFORT: if it stalls or fails, the leads still render
-      // (without last-touch) rather than hanging the whole list.
-      try {
-        const ac2 = new AbortController()
-        const timer2 = setTimeout(() => ac2.abort(), 15000)
-        try {
-          if (allOrgIds.length > 0) {
-            const { data: contactData } = await supabase
-              .from('contacts')
-              .select('org_id, name, phone')
-              .in('org_id', allOrgIds)
-              .eq('is_primary', true)
-              .abortSignal(ac2.signal)
-            ;(contactData ?? []).forEach((c: any) => {
-              if (!contactMap[c.org_id]) contactMap[c.org_id] = { name: c.name, phone: c.phone }
-            })
-          }
-          if (allLeadIds.length > 0) {
-            const [actRes, cmtRes] = await Promise.all([
-              supabase.from('activities').select('lead_id, channel, outcome, created_at').in('lead_id', allLeadIds).order('created_at', { ascending: false }).abortSignal(ac2.signal),
-              supabase.from('lead_comments').select('lead_id, comment, created_at').in('lead_id', allLeadIds).order('created_at', { ascending: false }).abortSignal(ac2.signal),
-            ])
-            ;(actRes.data ?? []).forEach((a: any) => {
-              if (!actMap[a.lead_id]) actMap[a.lead_id] = { channels: [], outcome: a.outcome ?? null, at: a.created_at }
-              if (a.channel && !actMap[a.lead_id].channels.includes(a.channel)) actMap[a.lead_id].channels.push(a.channel)
-            })
-            ;(cmtRes.data ?? []).forEach((c: any) => {
-              if (!commentMap[c.lead_id]) commentMap[c.lead_id] = c.comment
-            })
-          }
-        } finally {
-          clearTimeout(timer2)
-        }
-      } catch {
-        // Enrichment failed/timed out — show leads without last-touch rather than hang.
-      }
-
-      // All leads with contacts merged in (for workspace-wide search)
-      const allWithContacts = fullData.map(l => ({
-        ...l,
-        primaryContact: contactMap[l.org_id] ?? null,
-        lastActivity: actMap[l.id] ?? null,
-        lastComment: commentMap[l.id] ?? null,
-      }))
-      setAllSDRLeads(allWithContacts)
+      // The server (enrich=1) already attached primaryContact + lastActivity (+ lastComment)
+      // to each lead, so the browser no longer fires separate contacts/activities/comments
+      // requests — which is what could stall on the browser connection at high lead counts.
+      setAllSDRLeads(fullData)
 
       // Only show active SDR-phase working leads (excludes returned/dead + closer-phase)
-      const active = allWithContacts.filter(l => l.phase === 'sdr' && !EXCLUDE_FROM_ASSIGNED.has(l.status))
+      const active = fullData.filter(l => l.phase === 'sdr' && !EXCLUDE_FROM_ASSIGNED.has(l.status))
       setLeads(active)
       setFiltered(active)
     } catch (e: any) {
