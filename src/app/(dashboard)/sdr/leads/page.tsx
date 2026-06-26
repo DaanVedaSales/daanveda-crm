@@ -25,6 +25,7 @@ export default function SDRLeadsPage() {
   const [filtered, setFiltered] = useState<LeadWithOrg[]>([])
   const [allSDRLeads, setAllSDRLeads] = useState<LeadWithOrg[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [channelFilter, setChannelFilter] = useState<string | null>(null)  // null = All channels
   const [selectedLead, setSelectedLead] = useState<LeadWithOrg | null>(null)
@@ -84,62 +85,100 @@ export default function SDRLeadsPage() {
   // hidden from My Leads. 'contacted' (logged outbound/failed attempts) stays in My Leads.
   const EXCLUDE_FROM_ASSIGNED = new Set(['demo_booked', 'call_again', 'not_reachable', 'not_interested', 'follow_up', 'no_show'])
 
+  function retryLoad() {
+    setLoading(true)
+    fetchLeads()
+  }
+
   async function fetchLeads() {
-    const { data: user } = await supabase.auth.getUser()
-    const { data: profile } = await supabase.from('users').select('id').eq('auth_id', user.user!.id).single()
-    if (!profile) return
+    setError(null)
+    try {
+      const { data: user } = await supabase.auth.getUser()
+      const { data: profile } = await supabase.from('users').select('id').eq('auth_id', user.user!.id).single()
+      if (!profile) {
+        setError('Could not load your profile. Please refresh the page or sign in again.')
+        return
+      }
 
-    const res = await fetch(`/api/leads?assigned_to=${profile.id}`)
-    const data: LeadWithOrg[] = await res.json()
-    const fullData = data ?? []
+      // Primary load — the leads themselves. Timed via AbortController so a stalled
+      // request can never leave the screen stuck on the loading skeleton.
+      const ac = new AbortController()
+      const timer = setTimeout(() => ac.abort(), 20000)
+      let fullData: LeadWithOrg[] = []
+      try {
+        const res = await fetch(`/api/leads?assigned_to=${profile.id}`, { signal: ac.signal })
+        if (!res.ok) throw new Error(`Leads request failed (${res.status})`)
+        const data = await res.json()
+        fullData = Array.isArray(data) ? data : []
+      } finally {
+        clearTimeout(timer)
+      }
 
-    // Fetch primary contacts for ALL leads (active + follow-up + demos) for cross-section search
-    const allOrgIds = fullData.map(l => l.org_id).filter(Boolean)
-    let contactMap: Record<string, { name: string | null; phone: string | null }> = {}
-    if (allOrgIds.length > 0) {
-      const { data: contactData } = await supabase
-        .from('contacts')
-        .select('org_id, name, phone')
-        .in('org_id', allOrgIds)
-        .eq('is_primary', true)
+      // Primary contacts + last-touch per lead, for the list display and cross-section search.
+      const allOrgIds = fullData.map(l => l.org_id).filter(Boolean)
+      const allLeadIds = fullData.map(l => l.id).filter(Boolean)
+      let contactMap: Record<string, { name: string | null; phone: string | null }> = {}
+      const actMap: Record<string, { channels: string[]; outcome: string | null; at: string }> = {}
+      const commentMap: Record<string, string> = {}
 
-      ;(contactData ?? []).forEach((c: any) => {
-        if (!contactMap[c.org_id]) contactMap[c.org_id] = { name: c.name, phone: c.phone }
-      })
+      // Enrichment is BEST-EFFORT: if it stalls or fails, the leads still render
+      // (without last-touch) rather than hanging the whole list.
+      try {
+        const ac2 = new AbortController()
+        const timer2 = setTimeout(() => ac2.abort(), 15000)
+        try {
+          if (allOrgIds.length > 0) {
+            const { data: contactData } = await supabase
+              .from('contacts')
+              .select('org_id, name, phone')
+              .in('org_id', allOrgIds)
+              .eq('is_primary', true)
+              .abortSignal(ac2.signal)
+            ;(contactData ?? []).forEach((c: any) => {
+              if (!contactMap[c.org_id]) contactMap[c.org_id] = { name: c.name, phone: c.phone }
+            })
+          }
+          if (allLeadIds.length > 0) {
+            const [actRes, cmtRes] = await Promise.all([
+              supabase.from('activities').select('lead_id, channel, outcome, created_at').in('lead_id', allLeadIds).order('created_at', { ascending: false }).abortSignal(ac2.signal),
+              supabase.from('lead_comments').select('lead_id, comment, created_at').in('lead_id', allLeadIds).order('created_at', { ascending: false }).abortSignal(ac2.signal),
+            ])
+            ;(actRes.data ?? []).forEach((a: any) => {
+              if (!actMap[a.lead_id]) actMap[a.lead_id] = { channels: [], outcome: a.outcome ?? null, at: a.created_at }
+              if (a.channel && !actMap[a.lead_id].channels.includes(a.channel)) actMap[a.lead_id].channels.push(a.channel)
+            })
+            ;(cmtRes.data ?? []).forEach((c: any) => {
+              if (!commentMap[c.lead_id]) commentMap[c.lead_id] = c.comment
+            })
+          }
+        } finally {
+          clearTimeout(timer2)
+        }
+      } catch {
+        // Enrichment failed/timed out — show leads without last-touch rather than hang.
+      }
+
+      // All leads with contacts merged in (for workspace-wide search)
+      const allWithContacts = fullData.map(l => ({
+        ...l,
+        primaryContact: contactMap[l.org_id] ?? null,
+        lastActivity: actMap[l.id] ?? null,
+        lastComment: commentMap[l.id] ?? null,
+      }))
+      setAllSDRLeads(allWithContacts)
+
+      // Only show active SDR-phase working leads (excludes returned/dead + closer-phase)
+      const active = allWithContacts.filter(l => l.phase === 'sdr' && !EXCLUDE_FROM_ASSIGNED.has(l.status))
+      setLeads(active)
+      setFiltered(active)
+    } catch (e: any) {
+      setError(e?.name === 'AbortError'
+        ? 'Loading your leads took too long. Please retry.'
+        : 'Could not load your leads. Please retry.')
+    } finally {
+      // ALWAYS clear the skeleton — a failure now shows an error+retry, never an endless spinner.
+      setLoading(false)
     }
-
-    // Latest activity (channels tried + last outcome) and last note per lead, for the list display
-    const allLeadIds = fullData.map(l => l.id).filter(Boolean)
-    const actMap: Record<string, { channels: string[]; outcome: string | null; at: string }> = {}
-    const commentMap: Record<string, string> = {}
-    if (allLeadIds.length > 0) {
-      const [actRes, cmtRes] = await Promise.all([
-        supabase.from('activities').select('lead_id, channel, outcome, created_at').in('lead_id', allLeadIds).order('created_at', { ascending: false }),
-        supabase.from('lead_comments').select('lead_id, comment, created_at').in('lead_id', allLeadIds).order('created_at', { ascending: false }),
-      ])
-      ;(actRes.data ?? []).forEach((a: any) => {
-        if (!actMap[a.lead_id]) actMap[a.lead_id] = { channels: [], outcome: a.outcome ?? null, at: a.created_at }
-        if (a.channel && !actMap[a.lead_id].channels.includes(a.channel)) actMap[a.lead_id].channels.push(a.channel)
-      })
-      ;(cmtRes.data ?? []).forEach((c: any) => {
-        if (!commentMap[c.lead_id]) commentMap[c.lead_id] = c.comment
-      })
-    }
-
-    // All leads with contacts merged in (for workspace-wide search)
-    const allWithContacts = fullData.map(l => ({
-      ...l,
-      primaryContact: contactMap[l.org_id] ?? null,
-      lastActivity: actMap[l.id] ?? null,
-      lastComment: commentMap[l.id] ?? null,
-    }))
-    setAllSDRLeads(allWithContacts)
-
-    // Only show active SDR-phase working leads (excludes returned/dead + closer-phase)
-    const active = allWithContacts.filter(l => l.phase === 'sdr' && !EXCLUDE_FROM_ASSIGNED.has(l.status))
-    setLeads(active)
-    setFiltered(active)
-    setLoading(false)
   }
 
   // Cross-section search — runs when user types in the search bar
@@ -368,7 +407,24 @@ export default function SDRLeadsPage() {
               </div>
             ))}
 
-            {filtered.length === 0 && (
+            {error && filtered.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+                <div className="w-10 h-10 rounded-xl bg-[#FEE2E2] flex items-center justify-center mb-3">
+                  <svg className="w-5 h-5 text-[#EF4444]" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
+                  </svg>
+                </div>
+                <p className="text-[13px] font-medium text-[#374151]">{error}</p>
+                <button
+                  onClick={retryLoad}
+                  className="mt-3 px-3.5 py-1.5 bg-[#1A56DB] text-white text-xs font-semibold rounded-lg hover:bg-[#1e40af] transition-colors"
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+
+            {!error && filtered.length === 0 && (
               <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
                 <div className="w-10 h-10 rounded-xl bg-[#F1F5F9] flex items-center justify-center mb-3">
                   <svg className="w-5 h-5 text-[#94A3B8]" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
