@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { canModifyOrgContacts } from '@/lib/contactsAccess'
 
 // POST /api/contacts/[id]/set-primary — make this contact the primary KDM for its org.
 // Unsets is_primary on every other contact of the same org so exactly one stays primary.
@@ -11,7 +12,7 @@ export async function POST(
   const { data: { user } } = await authClient.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { data: profile } = await authClient.from('users').select('role').eq('auth_id', user.id).single()
+  const { data: profile } = await authClient.from('users').select('id, role').eq('auth_id', user.id).single()
   if (!profile || !['sdr', 'admin', 'closer'].includes(profile.role)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
@@ -26,6 +27,11 @@ export async function POST(
     .single()
   if (findErr || !target) {
     return NextResponse.json({ error: 'Contact not found' }, { status: 404 })
+  }
+
+  // Ownership: caller must be working this contact's org (admin bypasses).
+  if (!(await canModifyOrgContacts(supabase, (profile as any).id, (profile as any).role, (target as any).org_id))) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
   const now = new Date().toISOString()

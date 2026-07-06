@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { canModifyOrgContacts } from '@/lib/contactsAccess'
 
 // POST /api/contacts — create a new contact for an org (SDR, admin, or closer)
 export async function POST(req: NextRequest) {
@@ -7,7 +8,7 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await authClient.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { data: profile } = await authClient.from('users').select('role').eq('auth_id', user.id).single()
+  const { data: profile } = await authClient.from('users').select('id, role').eq('auth_id', user.id).single()
   if (!profile || !['sdr', 'admin', 'closer'].includes(profile.role)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
@@ -21,6 +22,11 @@ export async function POST(req: NextRequest) {
 
   // Use service client so the INSERT works regardless of RLS INSERT policy
   const supabase = createServiceClient()
+
+  // Ownership: caller must be working this org (admin bypasses).
+  if (!(await canModifyOrgContacts(supabase, (profile as any).id, (profile as any).role, org_id))) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
   const { data, error } = await supabase
     .from('contacts')
     .insert({
