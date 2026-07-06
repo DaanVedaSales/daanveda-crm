@@ -36,6 +36,24 @@ const EMPTY_FORM: FormState = { name: '', designation: '', phone: '', email: '',
 
 const inputCls = 'w-full px-2.5 py-1.5 text-xs border border-[#E2E8F0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A56DB]/20 focus:border-[#1A56DB]'
 
+// Defined at MODULE scope (never inside KdmEditor) so its identity is stable across
+// re-renders — otherwise React remounts the inputs on every keystroke and steals focus.
+function FormFields({ value, onChange }: { value: FormState; onChange: (f: FormState) => void }) {
+  return (
+    <div className="space-y-2">
+      <div className="grid grid-cols-2 gap-2">
+        <input className={inputCls} placeholder="Name *" value={value.name} onChange={e => onChange({ ...value, name: e.target.value })} />
+        <input className={inputCls} placeholder="Designation" value={value.designation} onChange={e => onChange({ ...value, designation: e.target.value })} />
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <input className={inputCls} placeholder="Phone" value={value.phone} onChange={e => onChange({ ...value, phone: e.target.value })} />
+        <input className={inputCls} placeholder="Email" value={value.email} onChange={e => onChange({ ...value, email: e.target.value })} />
+      </div>
+      <input className={inputCls} placeholder="LinkedIn URL" value={value.linkedin_url} onChange={e => onChange({ ...value, linkedin_url: e.target.value })} />
+    </div>
+  )
+}
+
 export default function KdmEditor({ orgId, contacts, onChanged }: KdmEditorProps) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState<FormState>(EMPTY_FORM)
@@ -124,22 +142,6 @@ export default function KdmEditor({ orgId, contacts, onChanged }: KdmEditorProps
     } finally {
       setBusyId(null)
     }
-  }
-
-  function FormFields({ value, onChange }: { value: FormState; onChange: (f: FormState) => void }) {
-    return (
-      <div className="space-y-2">
-        <div className="grid grid-cols-2 gap-2">
-          <input className={inputCls} placeholder="Name *" value={value.name} onChange={e => onChange({ ...value, name: e.target.value })} />
-          <input className={inputCls} placeholder="Designation" value={value.designation} onChange={e => onChange({ ...value, designation: e.target.value })} />
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          <input className={inputCls} placeholder="Phone" value={value.phone} onChange={e => onChange({ ...value, phone: e.target.value })} />
-          <input className={inputCls} placeholder="Email" value={value.email} onChange={e => onChange({ ...value, email: e.target.value })} />
-        </div>
-        <input className={inputCls} placeholder="LinkedIn URL" value={value.linkedin_url} onChange={e => onChange({ ...value, linkedin_url: e.target.value })} />
-      </div>
-    )
   }
 
   return (
