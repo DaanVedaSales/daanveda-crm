@@ -1022,9 +1022,6 @@ function LeadDetailPanel({
             <Field label="Team Size" value={org?.team_size ? `${org.team_size} people` : '—'} />
             <Field label="Age" value={org?.age_years ? `${org.age_years} years` : '—'} />
             <Field label="Thematic Areas" value={org?.thematic_areas?.join(', ') ?? '—'} />
-            <Field label="Follow-up Date" value={lead.follow_up_date ?? '—'} />
-            <Field label="Callback Date" value={lead.callback_date ?? '—'} />
-            <Field label="Recycle Reason" value={lead.recycle_reason ?? '—'} />
           </div>
         )}
 
