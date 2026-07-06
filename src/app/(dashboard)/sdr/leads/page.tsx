@@ -10,6 +10,7 @@ import { Search, ChevronRight, Plus, Pencil, Send, Trash2 } from 'lucide-react'
 import DateTimePicker from '@/components/ui/DateTimePicker'
 import OrgSearchInput from '@/components/crm/OrgSearchInput'
 import OrgSearchModal from '@/components/crm/OrgSearchModal'
+import KdmEditor from '@/components/crm/KdmEditor'
 import { ChannelFilter, OUTREACH_CHANNELS } from '@/components/crm/ChannelChip'
 import type { OrgSearchResult } from '@/app/api/organizations/search/route'
 import type { Lead, Organization, InterestSignal, LeadStatus } from '@/types/database'
@@ -863,11 +864,12 @@ function LeadDetailPanel({
   const [markingDead, setMarkingDead] = useState(false)
   const supabase = createClient()
 
-  useEffect(() => {
+  function loadDetail() {
     fetch(`/api/leads/${lead.id}`)
       .then(r => r.json())
       .then(d => { setActivities(d.activities ?? []); setContacts(d.contacts ?? []) })
-  }, [lead.id])
+  }
+  useEffect(() => { loadDetail() }, [lead.id])
 
   useEffect(() => {
     if (tab === 'outreach') fetchComments()
@@ -1094,25 +1096,11 @@ function LeadDetailPanel({
         )}
 
         {tab === 'contacts' && (
-          <div className="space-y-3">
-            {contacts.length === 0 && <p className="text-sm text-[#94A3B8]">No contacts on record.</p>}
-            {contacts.map((c: any) => (
-              <div key={c.id} className="bg-[#F8FAFC] rounded-lg p-3 border border-[#E2E8F0]">
-                <div className="flex items-center gap-2 mb-1">
-                  <p className="text-sm font-medium text-[#0F172A]">{c.name}</p>
-                  {c.is_primary && <span className="text-[10px] bg-[#1A56DB] text-white px-1.5 py-0.5 rounded-full">PRIMARY</span>}
-                </div>
-                <p className="text-xs text-[#64748B]">{c.designation}</p>
-                <div className="flex gap-3 mt-1.5 text-xs text-[#94A3B8]">
-                  {c.phone && <span>{c.phone}</span>}
-                  {c.email && <span>{c.email}</span>}
-                  {c.linkedin_url && (
-                    <a href={c.linkedin_url} target="_blank" rel="noreferrer" className="text-[#1A56DB] hover:underline">LinkedIn</a>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
+          <KdmEditor
+            orgId={lead.org_id}
+            contacts={contacts}
+            onChanged={() => { loadDetail(); onRefresh() }}
+          />
         )}
       </div>
 

@@ -8,6 +8,7 @@ import type { LeadStatus } from '@/types/database'
 import { cn, phoneMatches } from '@/lib/utils'
 import { CheckCircle, ChevronDown, ChevronUp, Trash2, Send, MessageSquare, Search } from 'lucide-react'
 import DateTimePicker from '@/components/ui/DateTimePicker'
+import KdmEditor from '@/components/crm/KdmEditor'
 import { ChannelFilter, OUTREACH_CHANNELS } from '@/components/crm/ChannelChip'
 
 interface FollowupLead {
@@ -25,6 +26,7 @@ interface FollowupLead {
 // ── Expandable detail for a follow-up lead ────────────────────────────────────
 function LeadExpandedDetail({
   leadId,
+  orgId,
   leadStatus,
   onContactsLoaded,
   onBookDemo,
@@ -32,6 +34,7 @@ function LeadExpandedDetail({
   currentCallbackDate,
 }: {
   leadId: string
+  orgId: string
   leadStatus: string
   onContactsLoaded: (contacts: any[]) => void
   onBookDemo: () => void
@@ -58,7 +61,7 @@ function LeadExpandedDetail({
 
   const isNoShow = leadStatus === 'no_show'
 
-  useEffect(() => {
+  function loadContacts() {
     fetch(`/api/leads/${leadId}`)
       .then(r => r.json())
       .then(d => {
@@ -66,6 +69,10 @@ function LeadExpandedDetail({
         setData({ contacts, activities: d.activities ?? [] })
         onContactsLoaded(contacts)
       })
+  }
+
+  useEffect(() => {
+    loadContacts()
     // Load follow-up comments (source=followup only)
     fetch(`/api/leads/comments?lead_id=${leadId}&source=followup`)
       .then(r => r.json())
@@ -165,23 +172,13 @@ function LeadExpandedDetail({
     return <div className="px-5 pb-4"><div className="h-12 bg-[#F1F5F9] rounded-lg skeleton" /></div>
   }
 
-  const primary = data.contacts.find((c: any) => c.is_primary) ?? data.contacts[0]
-
   return (
     <div className="px-5 pb-4 pt-2 border-t border-[#F1F5F9] space-y-3">
-      {/* KDM Contact */}
-      {primary && (
-        <div className="bg-[#F8FAFC] rounded-xl p-3 border border-[#E2E8F0]">
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8] mb-1.5">Key Decision Maker</p>
-          <p className="text-sm font-medium text-[#0F172A]">{primary.name}</p>
-          {primary.designation && <p className="text-xs text-[#64748B]">{primary.designation}</p>}
-          <div className="flex gap-3 mt-1 text-xs text-[#64748B]">
-            {primary.phone && <span>{primary.phone}</span>}
-            {primary.email && <span>{primary.email}</span>}
-          </div>
-        </div>
-      )}
-      {!primary && <p className="text-xs text-[#94A3B8]">No contact on record.</p>}
+      {/* KDMs — view all, edit any, add, set primary */}
+      <div>
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8] mb-1.5">Key Decision Makers</p>
+        <KdmEditor orgId={orgId} contacts={data.contacts} onChanged={loadContacts} />
+      </div>
 
       {/* Last contact — most recent activity only */}
       {data.activities.length > 0 && (
@@ -590,6 +587,7 @@ export default function FollowupsPage() {
         {expanded && (
           <LeadExpandedDetail
             leadId={lead.id}
+            orgId={lead.org_id}
             leadStatus={lead.status}
             onContactsLoaded={setContacts}
             onBookDemo={() => setShowBookDemo(true)}
