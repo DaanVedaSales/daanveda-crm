@@ -31,8 +31,8 @@ export default async function SDRDashboardPage() {
   const [demosRes, leadsRes, followupsRes, noShowRes] = await Promise.all([
     supabase.from('demos').select('id, lead_id').eq('sdr_id', profile.id).eq('is_deleted', false).gte('created_at', monthStart),
     supabase.from('leads').select('id', { count: 'exact', head: true }).eq('assigned_to', profile.id).eq('phase', 'sdr'),
-    supabase.from('leads').select('id', { count: 'exact', head: true }).eq('assigned_to', profile.id)
-      .lte('follow_up_date', today).in('status', ['call_again', 'follow_up']),
+    supabase.from('leads').select('id', { count: 'exact', head: true }).eq('assigned_to', profile.id).eq('is_deleted', false)
+      .lte('callback_date', today).in('status', ['call_again', 'follow_up']),
     supabase.from('leads').select('id', { count: 'exact', head: true }).eq('assigned_to', profile.id)
       .eq('status', 'no_show').eq('is_deleted', false),
   ])

@@ -128,7 +128,7 @@ function LeadExpandedDetail({
   // Reset to fresh — return a mistakenly-progressed lead to a clean 'assigned' state in My Leads.
   // Clears callback/follow-up dates, keeps activity history + interest signal. Lead leaves this queue.
   async function handleReset() {
-    if (!confirm('Reset this lead to a fresh state?\n\nIt returns to My Leads as a new assigned lead — callback and follow-up dates are cleared. Your activity history and notes are kept.')) return
+    if (!confirm('Reset this lead to a fresh state?\n\nIt returns to My Leads as a new assigned lead — the follow-up date is cleared. Your activity history and notes are kept.')) return
     setResetting(true)
     const res = await fetch(`/api/leads/${leadId}/reset`, { method: 'POST' })
     if (res.ok) {
@@ -203,9 +203,9 @@ function LeadExpandedDetail({
         </div>
       )}
 
-      {/* Next callback date — update inline */}
+      {/* Next follow-up date — update inline (stored in leads.callback_date) */}
       <div>
-        <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8] mb-1.5">Next Callback</p>
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94A3B8] mb-1.5">Next Follow-up</p>
         <div className="flex gap-2">
           <input
             type="date"

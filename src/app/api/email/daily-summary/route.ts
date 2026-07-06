@@ -45,7 +45,8 @@ export async function POST(req: NextRequest) {
           const { count: followups } = await supabase
             .from('leads').select('id', { count: 'exact', head: true })
             .eq('assigned_to', user.id)
-            .lte('follow_up_date', today)
+            .eq('is_deleted', false)
+            .lte('callback_date', today)
             .in('status', ['call_again', 'follow_up'])
 
           subject = `DaanVeda CRM — Good morning, ${user.name.split(' ')[0]} 🌅`

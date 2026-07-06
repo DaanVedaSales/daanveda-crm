@@ -306,14 +306,13 @@ export default function SDRLeadsPage() {
                     <p className="text-xs text-[#94A3B8] truncate">
                       {lead.organization?.location} · SQL {(lead.organization as any)?.sql_score_label ?? (lead.organization?.sql_score != null ? `${lead.organization.sql_score}/8` : 'N/A')}
                     </p>
-                    {/* Last touch — channels + when, plus follow-up date if set */}
+                    {/* Last touch — channels + when */}
                     {(() => {
                       const SHORT: Record<string, string> = { 'Cold Call': 'Call', 'Cold Email': 'Email' }
                       const la = (lead as any).lastActivity
                       const chans = la ? ((la.channels ?? []).map((c: string) => SHORT[c] ?? c).join(' · ') || 'Contacted') : null
                       const parts = [
                         chans && la?.at ? `${chans} · ${formatRelativeDate(la.at)}` : chans,
-                        lead.follow_up_date ? `FU ${formatRelativeDate(lead.follow_up_date)}` : null,
                       ].filter(Boolean)
                       return parts.length > 0 ? (
                         <p className="text-[11px] text-[#94A3B8] truncate mt-1">{parts.join(' · ')}</p>
