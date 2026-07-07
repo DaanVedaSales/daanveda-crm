@@ -199,12 +199,16 @@ export default function ActionsPage() {
 
   async function handleReschedule(demo: DemoWithDetails) {
     const newDate = rescheduleDate[demo.id]
-    if (!newDate) return
+    const sdr = newSdrId[demo.id]
+    const closer = newCloserId[demo.id]
+    // Reassign SDR and/or Closer WITHOUT requiring a date change (and vice-versa).
+    if (!newDate && !sdr && !closer) return
     setSaving(demo.id)
 
-    const payload: Record<string, unknown> = { reschedule_date: newDate }
-    if (newSdrId[demo.id]) payload.new_sdr_id = newSdrId[demo.id]
-    if (newCloserId[demo.id]) payload.new_closer_id = newCloserId[demo.id]
+    const payload: Record<string, unknown> = {}
+    if (newDate) payload.reschedule_date = newDate
+    if (sdr) payload.new_sdr_id = sdr
+    if (closer) payload.new_closer_id = closer
 
     await fetch(`/api/demos/${demo.id}`, {
       method: 'PATCH',
@@ -212,7 +216,10 @@ export default function ActionsPage() {
       body: JSON.stringify(payload),
     })
 
-    setAllDemos(prev => prev.filter(d => d.id !== demo.id))
+    // Refetch rather than optimistically drop the card — an SDR-credit-only reassign keeps
+    // the demo here (only a Closer reassign or a reschedule moves/changes it).
+    setActionState(p => ({ ...p, [demo.id]: null }))
+    await fetchData()
     setSaving(null)
   }
 
@@ -493,10 +500,10 @@ export default function ActionsPage() {
                           <div className="flex gap-2 items-center pt-1">
                             <button
                               onClick={() => handleReschedule(demo)}
-                              disabled={isSaving || !rescheduleDate[demo.id]}
+                              disabled={isSaving || (!rescheduleDate[demo.id] && !newSdrId[demo.id] && !newCloserId[demo.id])}
                               className="btn-primary flex-1 disabled:opacity-60"
                             >
-                              {isSaving ? 'Saving...' : 'Confirm Reschedule'}
+                              {isSaving ? 'Saving...' : 'Confirm Changes'}
                             </button>
                             <button
                               onClick={() => setActionState(p => ({ ...p, [demo.id]: null }))}

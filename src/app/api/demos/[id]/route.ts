@@ -179,43 +179,39 @@ export async function PATCH(
     }
   }
 
-  // ── SDR Reassignment ──────────────────────────────────────────────────────
-  // Return lead back to the new SDR's Assigned Leads workspace
+  // ── SDR Reassignment — CREDIT ONLY ────────────────────────────────────────
+  // demos.sdr_id is re-pointed in updatePayload above, so the new SDR gets the credit
+  // (dashboards attribute demos by sdr_id). The lead STAYS with the closer — it is NOT
+  // sent back to the SDR workspace. Only a note is logged here.
   if (new_sdr_id && data.lead_id) {
-    // Fetch new SDR's name for activity note
     const { data: newSdr } = await supabase.from('users').select('name').eq('id', new_sdr_id).single()
     promises.push(
-      supabase.from('leads')
-        .update({
-          assigned_to: new_sdr_id,
-          phase: 'sdr',
-          status: 'contacted',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', data.lead_id),
       supabase.from('activities').insert({
         lead_id: data.lead_id,
         org_id: data.org_id,
         user_id: actorId,
         activity_type: 'note',
-        notes: `SDR reassigned to ${newSdr?.name ?? 'new SDR'} — lead returned to SDR workspace for re-qualification.`,
+        notes: `SDR credit reassigned to ${newSdr?.name ?? 'new SDR'}. Deal stays with the closer.`,
         new_value: 'sdr_reassigned',
       }),
     )
   }
 
-  // ── Closer Reassignment ───────────────────────────────────────────────────
-  // Move the deal to the new closer's pipeline
+  // ── Closer Reassignment — LEAD MOVES ──────────────────────────────────────
+  // The demo (demos.closer_id in updatePayload above), the deal, AND the lead ownership
+  // all move to the new closer's workspace. SDR credit is untouched.
   if (new_closer_id && data.lead_id) {
     const { data: newCloser } = await supabase.from('users').select('name').eq('id', new_closer_id).single()
+    const nowIso = new Date().toISOString()
     promises.push(
-      // Update the deal to point to new closer
+      // Move the deal to the new closer's pipeline
       supabase.from('deals')
-        .update({
-          closer_id: new_closer_id,
-          updated_at: new Date().toISOString(),
-        })
+        .update({ closer_id: new_closer_id, updated_at: nowIso })
         .eq('demo_id', params.id),
+      // Move the lead ownership too (a closer-phase lead is assigned to its closer)
+      supabase.from('leads')
+        .update({ assigned_to: new_closer_id, updated_at: nowIso })
+        .eq('id', data.lead_id),
       supabase.from('activities').insert({
         lead_id: data.lead_id,
         org_id: data.org_id,
