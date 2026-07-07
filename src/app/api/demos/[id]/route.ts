@@ -238,6 +238,9 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   const demoId = params.id
+  // 'permanent' → remove the lead entirely (appears nowhere). 'return_to_sdr' (default) →
+  // send the lead back to the original SDR's follow-up queue, flagged as returned by closer.
+  const mode = new URL(req.url).searchParams.get('mode') === 'permanent' ? 'permanent' : 'return_to_sdr'
   const authClient = createClient()
   const supabase = createServiceClient()
 
@@ -277,30 +280,49 @@ export async function DELETE(
     .update({ is_deleted: true, deleted_at: now })
     .eq('lead_id', demo.lead_id)
 
-  // Return lead to SDR follow-up queue — status=call_again with today as callback_date
-  // so it appears in the SDR's Follow-up Queue immediately (IST calendar day)
-  const todayDate = toISTDateString()
-  await supabase
-    .from('leads')
-    .update({
-      phase: 'sdr',
-      status: 'call_again',
-      callback_date: todayDate,
-      assigned_to: demo.sdr_id,
-      is_deleted: false,
-      updated_at: now,
-    })
-    .eq('id', demo.lead_id)
+  if (mode === 'permanent') {
+    // Permanent: soft-delete the lead too — it appears nowhere for anyone.
+    if (demo.lead_id) {
+      await supabase
+        .from('leads')
+        .update({ is_deleted: true, deleted_at: now, updated_at: now })
+        .eq('id', demo.lead_id)
+    }
+    if (actorId && demo.lead_id) {
+      await supabase.from('activities').insert({
+        lead_id: demo.lead_id,
+        org_id: demo.org_id,
+        user_id: actorId,
+        activity_type: 'note',
+        notes: 'Deal permanently deleted by closer.',
+      })
+    }
+  } else {
+    // Return lead to the original SDR's follow-up queue (call_again, today), flagged as
+    // returned-by-closer so the SDR sees a red label. The SDR can then delete it themselves.
+    const todayDate = toISTDateString()
+    await supabase
+      .from('leads')
+      .update({
+        phase: 'sdr',
+        status: 'call_again',
+        callback_date: todayDate,
+        assigned_to: demo.sdr_id,
+        recycle_reason: 'Returned by closer — deal deleted',
+        is_deleted: false,
+        updated_at: now,
+      })
+      .eq('id', demo.lead_id)
 
-  // Activity log
-  if (actorId) {
-    await supabase.from('activities').insert({
-      lead_id: demo.lead_id,
-      org_id: demo.org_id,
-      user_id: actorId,
-      activity_type: 'note',
-      notes: 'Demo removed by closer — lead returned to your follow-up queue. Follow up to determine next steps.',
-    })
+    if (actorId && demo.lead_id) {
+      await supabase.from('activities').insert({
+        lead_id: demo.lead_id,
+        org_id: demo.org_id,
+        user_id: actorId,
+        activity_type: 'note',
+        notes: 'Deal deleted by closer — lead returned to SDR follow-up queue.',
+      })
+    }
   }
 
   return NextResponse.json({ success: true })
