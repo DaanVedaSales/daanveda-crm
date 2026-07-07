@@ -336,9 +336,10 @@ interface DealComment {
 }
 
 // ── Deal Detail Panel ──────────────────────────────────────────────────────────
-function DealPanel({ deal, contacts, onClose, onUpdate, onDelete }: {
+function DealPanel({ deal, contacts, currentUserId, onClose, onUpdate, onDelete }: {
   deal: DealWithDetails
   contacts: any[]
+  currentUserId: string | null
   onClose: () => void
   onUpdate: () => void
   onDelete: (dealId: string) => void
@@ -484,6 +485,14 @@ function DealPanel({ deal, contacts, onClose, onUpdate, onDelete }: {
       setCommentText('')
     }
     setPostingComment(false)
+  }
+
+  async function deleteComment(id: string) {
+    // Permanently remove one of your own comments.
+    const prev = comments
+    setComments(cs => cs.filter(c => c.id !== id))  // optimistic
+    const res = await fetch(`/api/deals/comments/${id}`, { method: 'DELETE' })
+    if (!res.ok) setComments(prev)  // restore on failure
   }
 
   async function removeFromBoard() {
@@ -1039,6 +1048,15 @@ function DealPanel({ deal, contacts, onClose, onUpdate, onDelete }: {
                         <span className="text-[10px] text-[#94A3B8]">
                           {new Date(c.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
                         </span>
+                        {c.user?.id && currentUserId && c.user.id === currentUserId && (
+                          <button
+                            onClick={() => deleteComment(c.id)}
+                            className="text-[#CBD5E1] hover:text-[#EF4444] transition-colors"
+                            title="Delete comment"
+                          >
+                            <Trash2 className="w-3 h-3" strokeWidth={1.75} />
+                          </button>
+                        )}
                       </div>
                     </div>
                     <p className="text-[12px] text-[#374151] leading-relaxed whitespace-pre-wrap">{c.comment}</p>
@@ -1288,6 +1306,7 @@ export default function PipelinePage() {
   const [loading,      setLoading]     = useState(true)
   const [draggingId,   setDraggingId]  = useState<string | null>(null)
   const [selectedDeal, setSelectedDeal] = useState<DealWithDetails | null>(null)
+  const [myId, setMyId] = useState<string | null>(null)
   const [dealContacts, setDealContacts] = useState<any[]>([])
   const [showAddDeal,   setShowAddDeal]   = useState(false)
   const [showOrgSearch, setShowOrgSearch] = useState(false)
@@ -1319,6 +1338,7 @@ export default function PipelinePage() {
     const { data: user } = await supabase.auth.getUser()
     const { data: profile } = await supabase.from('users').select('id').eq('auth_id', user.user!.id).single()
     if (!profile) return
+    setMyId((profile as any).id)
     const res  = await fetch(`/api/deals?closer_id=${profile.id}`)
     const deals: DealWithDetails[] = await res.json()
     const dealsArr = Array.isArray(deals) ? deals : []
@@ -1585,6 +1605,7 @@ export default function PipelinePage() {
         <DealPanel
           deal={selectedDeal}
           contacts={dealContacts}
+          currentUserId={myId}
           onClose={() => setSelectedDeal(null)}
           onUpdate={fetchPipeline}
           onDelete={(dealId) => {
