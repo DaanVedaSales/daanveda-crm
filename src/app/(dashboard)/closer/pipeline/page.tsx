@@ -1297,6 +1297,7 @@ export default function PipelinePage() {
   // "Converting Later" date-capture modal (committed conversion date)
   const [convertLaterTarget, setConvertLaterTarget] = useState<string | null>(null)
   const [convertLaterDate, setConvertLaterDate] = useState('')
+  const [convertLaterProposalSent, setConvertLaterProposalSent] = useState(false)
   const supabase = createClient()
   const router = useRouter()
 
@@ -1367,10 +1368,19 @@ export default function PipelinePage() {
     const deal = allDeals.find(d => d.id === draggingId)
     if (!deal || deal.stage === targetStage) { setDraggingId(null); return }
 
+    // Leaving Demo Done without the proposal recorded → ask once, so it isn't lost when the
+    // card moves to a stage that has no "Proposal Sent" button. proposal_sent_at is a
+    // standalone timestamp, so this records it regardless of the destination stage.
+    let proposalPatch: Record<string, unknown> = {}
+    if (deal.stage === 'demo_done' && !deal.proposal_sent_at) {
+      if (confirm('Did you send the proposal to them?')) proposalPatch = { proposal_sent_at: new Date().toISOString() }
+    }
+
     // Converting Later requires a committed conversion date — capture it via a modal
     if (targetStage === 'converting_later') {
       setConvertLaterTarget(draggingId)
       setConvertLaterDate('')
+      setConvertLaterProposalSent(!!proposalPatch.proposal_sent_at)
       setDraggingId(null)
       return
     }
@@ -1378,13 +1388,13 @@ export default function PipelinePage() {
     if (targetStage === 'lost') {
       const reason = prompt('Loss reason (required):')
       if (!reason?.trim()) { setDraggingId(null); return }
-      await fetch(`/api/deals/${draggingId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ stage: targetStage, loss_reason: reason }) })
+      await fetch(`/api/deals/${draggingId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ stage: targetStage, loss_reason: reason, ...proposalPatch }) })
     } else if (targetStage === 'won') {
       const billing = prompt('Billing name (required):')
       if (!billing?.trim()) { setDraggingId(null); return }
-      await fetch(`/api/deals/${draggingId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ stage: targetStage, billing_name: billing }) })
+      await fetch(`/api/deals/${draggingId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ stage: targetStage, billing_name: billing, ...proposalPatch }) })
     } else {
-      await fetch(`/api/deals/${draggingId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ stage: targetStage }) })
+      await fetch(`/api/deals/${draggingId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ stage: targetStage, ...proposalPatch }) })
     }
     setDraggingId(null); fetchPipeline()
   }
@@ -1394,10 +1404,11 @@ export default function PipelinePage() {
     await fetch(`/api/deals/${convertLaterTarget}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ stage: 'converting_later', next_follow_up: convertLaterDate }),
+      body: JSON.stringify({ stage: 'converting_later', next_follow_up: convertLaterDate, ...(convertLaterProposalSent ? { proposal_sent_at: new Date().toISOString() } : {}) }),
     })
     setConvertLaterTarget(null)
     setConvertLaterDate('')
+    setConvertLaterProposalSent(false)
     fetchPipeline()
   }
 
