@@ -188,9 +188,9 @@ export default function ActionsPage() {
     setSaving(null)
   }
 
-  async function handleDeleteDemo(demo: DemoWithDetails) {
+  async function handleDeleteDemo(demo: DemoWithDetails, mode: 'permanent' | 'return_to_sdr') {
     setSaving(demo.id)
-    const res = await fetch(`/api/demos/${demo.id}`, { method: 'DELETE' })
+    const res = await fetch(`/api/demos/${demo.id}?mode=${mode}`, { method: 'DELETE' })
     if (res.ok) {
       setAllDemos(prev => prev.filter(d => d.id !== demo.id))
     }
@@ -508,15 +508,24 @@ export default function ActionsPage() {
                         </div>
 
                       ) : action === 'delete' ? (
-                        <div className="px-5 py-4 bg-red-50 border-t border-red-100 flex items-center justify-between">
-                          <p className="text-[13px] text-[#EF4444] font-medium">Remove this demo from your pipeline?</p>
-                          <div className="flex gap-2">
+                        <div className="px-5 py-4 bg-red-50 border-t border-red-100">
+                          <p className="text-[13px] text-[#EF4444] font-medium mb-2">Delete this demo?</p>
+                          <div className="flex flex-wrap gap-2">
+                            {demo.sdr?.id && (
+                              <button
+                                onClick={() => handleDeleteDemo(demo, 'return_to_sdr')}
+                                disabled={isSaving}
+                                className="px-3 py-1.5 border border-[#E2E8F0] bg-white text-[#374151] text-xs font-semibold rounded-lg disabled:opacity-60 hover:bg-[#F8FAFC]"
+                              >
+                                Send back to SDR{demo.sdr.name ? ` (${demo.sdr.name})` : ''}
+                              </button>
+                            )}
                             <button
-                              onClick={() => handleDeleteDemo(demo)}
+                              onClick={() => handleDeleteDemo(demo, 'permanent')}
                               disabled={isSaving}
                               className="px-4 py-1.5 bg-[#EF4444] text-white text-xs font-semibold rounded-lg disabled:opacity-60 hover:bg-[#DC2626]"
                             >
-                              {isSaving ? 'Deleting...' : 'Confirm'}
+                              {isSaving ? 'Deleting...' : 'Delete permanently'}
                             </button>
                             <button
                               onClick={() => setActionState(p => ({ ...p, [demo.id]: null }))}

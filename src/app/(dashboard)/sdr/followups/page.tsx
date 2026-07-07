@@ -17,6 +17,7 @@ interface FollowupLead {
   status: LeadStatus
   callback_date: string | null
   follow_up_date: string | null
+  recycle_reason: string | null
   updated_at: string | null
   organization: { name: string; location: string | null; url: string | null; annual_revenue: number | null; team_size: number | null }
   primaryContact?: { name: string | null; phone: string | null } | null
@@ -372,7 +373,7 @@ export default function FollowupsPage() {
 
     const { data } = await supabase
       .from('leads')
-      .select('id, org_id, status, callback_date, follow_up_date, updated_at, organization:organizations(name, location, url, annual_revenue, team_size, is_banned)')
+      .select('id, org_id, status, callback_date, follow_up_date, recycle_reason, updated_at, organization:organizations(name, location, url, annual_revenue, team_size, is_banned)')
       .eq('assigned_to', profile.id)
       .eq('is_deleted', false)
       .eq('phase', 'sdr')
@@ -527,6 +528,9 @@ export default function FollowupsPage() {
           <div className="flex-1 min-w-0">
             <p className="text-[13px] font-medium text-[#0F172A] truncate">{lead.organization?.name}</p>
             <p className="text-[11px] text-[#94A3B8] mt-0.5">{lead.organization?.location}</p>
+            {lead.recycle_reason?.startsWith('Returned by closer') && (
+              <p className="text-[10px] font-semibold text-[#EF4444] mt-0.5">Returned by Closer — deal deleted</p>
+            )}
           </div>
           <div className="flex items-center gap-3 shrink-0 ml-4">
             {isNoShow ? (

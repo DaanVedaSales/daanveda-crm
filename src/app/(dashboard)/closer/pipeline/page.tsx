@@ -501,13 +501,16 @@ function DealPanel({ deal, contacts, currentUserId, onClose, onUpdate, onDelete 
     setRemoving(false); onUpdate(); onClose()
   }
 
-  async function handleDelete() {
+  // demo-backed deals → /api/demos/[id] with mode (permanent | return_to_sdr).
+  // demo-less (manual) deals → /api/deals/[id] (always permanent — no SDR to return to).
+  async function handleDelete(mode: 'permanent' | 'return_to_sdr') {
     setDeleting(true)
-    // If demo_id exists, DELETE /api/demos/:id (cascades lead return to SDR follow-up queue)
-    // Otherwise just soft-delete deal directly (shouldn't happen but be safe)
-    let success = true
+    let success: boolean
     if (deal.demo?.id) {
-      const res = await fetch(`/api/demos/${deal.demo.id}`, { method: 'DELETE' })
+      const res = await fetch(`/api/demos/${deal.demo.id}?mode=${mode}`, { method: 'DELETE' })
+      success = res.ok
+    } else {
+      const res = await fetch(`/api/deals/${deal.id}`, { method: 'DELETE' })
       success = res.ok
     }
     setDeleting(false)
@@ -546,31 +549,50 @@ function DealPanel({ deal, contacts, currentUserId, onClose, onUpdate, onDelete 
             </div>
           </div>
           <div className="flex items-center gap-1">
-            {confirmDelete ? (
-              <div className="flex items-center gap-1.5 mr-1">
-                <span className="text-[11px] text-[#EF4444] font-medium whitespace-nowrap">Remove from pipeline?</span>
-                <button
-                  onClick={handleDelete}
-                  disabled={deleting}
-                  className="px-2 py-0.5 bg-[#EF4444] text-white text-[10px] font-semibold rounded-lg disabled:opacity-60 hover:bg-[#DC2626]"
-                >
-                  {deleting ? '...' : 'Yes'}
-                </button>
-                <button
-                  onClick={() => setConfirmDelete(false)}
-                  className="px-2 py-0.5 border border-[#E2E8F0] text-[#64748B] text-[10px] rounded-lg hover:bg-[#F8FAFC]"
-                >
-                  Cancel
-                </button>
+            <button
+              onClick={() => setConfirmDelete(true)}
+              className="p-2 rounded-lg hover:bg-red-50 text-[#94A3B8] hover:text-[#EF4444] transition-colors"
+              title="Delete deal"
+            >
+              <Trash2 className="w-4 h-4" strokeWidth={1.75} />
+            </button>
+
+            {confirmDelete && (
+              <div className="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4" onClick={() => { if (!deleting) setConfirmDelete(false) }}>
+                <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-5" onClick={e => e.stopPropagation()}>
+                  <h3 className="font-semibold text-[#0F172A] text-sm">Delete this deal?</h3>
+                  <p className="text-xs text-[#64748B] mt-1">
+                    {deal.demo?.sdr?.id
+                      ? 'Remove it for good, or hand the lead back to the SDR for a follow-up.'
+                      : 'This removes the deal and its lead permanently.'}
+                  </p>
+                  <div className="flex flex-col gap-2 mt-4">
+                    {deal.demo?.sdr?.id && (
+                      <button
+                        onClick={() => handleDelete('return_to_sdr')}
+                        disabled={deleting}
+                        className="w-full py-2 text-xs font-semibold rounded-lg border border-[#E2E8F0] text-[#374151] hover:bg-[#F8FAFC] disabled:opacity-60"
+                      >
+                        Send back to SDR{deal.demo.sdr.name ? ` (${deal.demo.sdr.name})` : ''} for follow-up
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleDelete('permanent')}
+                      disabled={deleting}
+                      className="w-full py-2 bg-[#EF4444] text-white text-xs font-semibold rounded-lg hover:bg-[#DC2626] disabled:opacity-60"
+                    >
+                      {deleting ? 'Deleting…' : 'Delete permanently'}
+                    </button>
+                    <button
+                      onClick={() => setConfirmDelete(false)}
+                      disabled={deleting}
+                      className="w-full py-2 text-xs text-[#64748B] rounded-lg hover:bg-[#F8FAFC] disabled:opacity-60"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
               </div>
-            ) : (
-              <button
-                onClick={() => setConfirmDelete(true)}
-                className="p-2 rounded-lg hover:bg-red-50 text-[#94A3B8] hover:text-[#EF4444] transition-colors"
-                title="Delete deal"
-              >
-                <Trash2 className="w-4 h-4" strokeWidth={1.75} />
-              </button>
             )}
             <button
               onClick={onClose}
