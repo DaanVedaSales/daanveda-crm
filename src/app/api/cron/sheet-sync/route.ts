@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
+import { cleanupOldNotifications } from '@/lib/maintenance'
 
 // GET/POST /api/cron/sheet-sync
 // Pushes the unified per-lead journey rows to the UniSheet webhook.
@@ -151,12 +152,16 @@ async function runSync() {
   return NextResponse.json(result)
 }
 
+// This is the app's daily heartbeat cron, so daily housekeeping rides it (best-effort,
+// never throws). Runs regardless of whether the UniSheet leg is configured.
 export async function GET(req: NextRequest) {
   if (!authorized(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  await cleanupOldNotifications()
   return runSync()
 }
 
 export async function POST(req: NextRequest) {
   if (!authorized(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  await cleanupOldNotifications()
   return runSync()
 }
