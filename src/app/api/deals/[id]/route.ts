@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { toISTDateString } from '@/lib/utils'
+import { notifyRole } from '@/lib/notifications'
 
 // DELETE /api/deals/:id — remove a deal that has NO demo (a manually-added deal).
 // Always permanent: soft-deletes the deal + its lead (there is no original SDR to return
@@ -101,5 +102,23 @@ export async function PATCH(
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Notify admins when a deal is won (best-effort — never blocks the stage update).
+  if (stage === 'won') {
+    const svc = createServiceClient() as any
+    const [{ data: closerRow }, { data: orgRow }] = await Promise.all([
+      svc.from('users').select('name').eq('id', (data as any).closer_id).single(),
+      svc.from('organizations').select('name').eq('id', (data as any).org_id).single(),
+    ])
+    const value = (data as any).deal_value
+    await notifyRole('admin', {
+      actorId: (data as any).closer_id,
+      type: 'deal_won',
+      title: 'Deal won',
+      body: `${closerRow?.name ?? 'A closer'} won ${orgRow?.name ?? 'a deal'}${value ? ` — ₹${Number(value).toLocaleString('en-IN')}` : ''}.`,
+      link: '/admin',
+    })
+  }
+
   return NextResponse.json(data)
 }

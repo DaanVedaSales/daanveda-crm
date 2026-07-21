@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { toISTDateString } from '@/lib/utils'
+import { notify } from '@/lib/notifications'
 
 // POST /api/demos — book demo + handoff (SDR only)
 // closer_id is optional — if provided, assigns that closer; otherwise round-robin
@@ -172,6 +173,18 @@ export async function POST(req: NextRequest) {
     to_user_id: assignedCloserId,
     assigned_by: sdrProfile.id,
     reason: 'Demo booked — assigned to Closer',
+  })
+
+  // 6. Notify the assigned closer (best-effort — never blocks booking)
+  const { data: bookOrg } = await supabase.from('organizations').select('name').eq('id', org_id).single()
+  const { data: bookSdr } = await supabase.from('users').select('name').eq('id', sdrProfile.id).single()
+  await notify({
+    userId: assignedCloserId,
+    actorId: sdrProfile.id,
+    type: 'demo_booked',
+    title: 'New demo booked for you',
+    body: `${bookSdr?.name ?? 'An SDR'} booked a demo${bookOrg?.name ? ` with ${bookOrg.name}` : ''}.`,
+    link: '/closer/today',
   })
 
   return NextResponse.json(

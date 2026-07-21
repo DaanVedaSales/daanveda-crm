@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { notify } from '@/lib/notifications'
 
 // PATCH /api/lead-requests/[id]
 // Admin approves, rejects, or marks fulfilled.
@@ -120,6 +121,19 @@ export async function PATCH(
 
   if (updateErr) {
     return NextResponse.json({ error: updateErr.message }, { status: 500 })
+  }
+
+  // Notify the requesting SDR of the decision (best-effort; only for approve/reject).
+  if (request.sdr_id && (status === 'approved' || status === 'rejected')) {
+    const kind = request.request_type === 'data_enrichment' ? 'Data enrichment request' : 'Lead claim request'
+    await notify({
+      userId: request.sdr_id, actorId: adminProfile.id, type: 'request_decision',
+      title: status === 'approved' ? `${kind} approved` : `${kind} declined`,
+      body: status === 'approved'
+        ? `Admin approved your request. ${autoCreatedLeadId ? 'The lead is now in My Leads.' : ''}`.trim()
+        : `Admin declined your request.${admin_note?.trim() ? ` Note: ${admin_note.trim()}` : ''}`,
+      link: '/sdr/leads',
+    })
   }
 
   return NextResponse.json({

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { toISTDateString, IST_TIMEZONE } from '@/lib/utils'
+import { notify } from '@/lib/notifications'
 
 // PATCH /api/demos/:id — update demo status, reminder_sent, post-demo notes, reschedule, reassign
 //
@@ -225,6 +226,43 @@ export async function PATCH(
 
   await Promise.all(promises)
 
+  // ── Notifications (best-effort — never block the demo update) ───────────────
+  // Core work above already succeeded. data.sdr_id/closer_id reflect any reassignment.
+  {
+    const { data: nOrg } = await supabase.from('organizations').select('name').eq('id', data.org_id).single()
+    const orgName = nOrg?.name ?? 'a lead'
+    const shortDate = (iso: string) => new Date(iso).toLocaleString('en-IN', {
+      timeZone: IST_TIMEZONE, day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true,
+    })
+
+    if (status === 'no_show' && data.sdr_id) {
+      await notify({
+        userId: data.sdr_id, actorId: actorId, type: 'demo_no_show',
+        title: 'Demo no-show — back to you',
+        body: `The demo with ${orgName} was a no-show. The lead is back in your follow-ups to reschedule.`,
+        link: '/sdr/followups',
+      })
+    } else if (new_closer_id) {
+      // Closer reassignment — notify the closer who now owns the demo.
+      await notify({
+        userId: new_closer_id, actorId: actorId, type: 'demo_reassigned',
+        title: 'A demo was assigned to you',
+        body: `The demo with ${orgName} was moved to your pipeline${reschedule_date ? `, rescheduled to ${shortDate(reschedule_date)}` : ''}.`,
+        link: '/closer/today',
+      })
+    } else if (reschedule_date) {
+      // Plain reschedule — notify the counterpart (whoever didn't perform it).
+      const recipient = actorId === data.sdr_id ? data.closer_id : data.sdr_id
+      const toCloser = recipient === data.closer_id
+      await notify({
+        userId: recipient, actorId: actorId, type: 'demo_rescheduled',
+        title: 'Demo rescheduled',
+        body: `The demo with ${orgName} was rescheduled to ${shortDate(reschedule_date)}.`,
+        link: toCloser ? '/closer/today' : '/sdr/demos',
+      })
+    }
+  }
+
   return NextResponse.json(data)
 }
 
@@ -317,6 +355,17 @@ export async function DELETE(
         user_id: actorId,
         activity_type: 'note',
         notes: 'Deal deleted by closer — lead returned to SDR follow-up queue.',
+      })
+    }
+
+    // Notify the original SDR the lead is back with them (best-effort).
+    if (demo.sdr_id) {
+      const { data: rOrg } = await supabase.from('organizations').select('name').eq('id', demo.org_id).single()
+      await notify({
+        userId: demo.sdr_id, actorId: actorId, type: 'lead_returned',
+        title: 'A lead was returned to you',
+        body: `The closer returned ${rOrg?.name ?? 'a lead'} — it's back in your follow-ups.`,
+        link: '/sdr/followups',
       })
     }
   }

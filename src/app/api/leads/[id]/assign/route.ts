@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { notify } from '@/lib/notifications'
 
 // POST /api/leads/:id/assign
 export async function POST(
@@ -36,12 +37,23 @@ export async function POST(
   })
 
   // Log activity
+  const { data: orgRow } = await supabase.from('leads')
+    .select('org:organizations!leads_org_id_fkey(name)').eq('id', params.id).single()
+  const assignOrgName = (orgRow?.org as any)?.name as string | undefined
   await supabase.from('activities').insert({
     lead_id: params.id,
     org_id: (await supabase.from('leads').select('org_id').eq('id', params.id).single()).data?.org_id,
     user_id: profile.id,
     activity_type: 'assignment',
     notes: reason ?? 'Lead assigned',
+  })
+
+  // Notify the SDR the lead was assigned to (best-effort; skip self-assign).
+  await notify({
+    userId: to_user_id, actorId: profile.id, type: 'lead_assigned',
+    title: 'New lead assigned to you',
+    body: `${assignOrgName ? `${assignOrgName} was assigned to you.` : 'A lead was assigned to you.'}`,
+    link: '/sdr/leads',
   })
 
   return NextResponse.json({ success: true })

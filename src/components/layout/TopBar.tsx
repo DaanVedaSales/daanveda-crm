@@ -1,6 +1,6 @@
 'use client'
 
-import { Bell } from 'lucide-react'
+import NotificationBell from './NotificationBell'
 
 interface TopBarProps {
   title: string
@@ -28,13 +28,8 @@ export default function TopBar({ title, subtitle, actions }: TopBarProps) {
         </div>
       )}
 
-      {/* Bell — right anchor */}
-      <button
-        className="relative w-8 h-8 flex items-center justify-center rounded-lg text-[#94A3B8] hover:text-[#0F172A] hover:bg-[#F1F5F9] transition-colors"
-        title="Notifications"
-      >
-        <Bell className="w-4 h-4" strokeWidth={1.75} />
-      </button>
+      {/* Notifications — right anchor */}
+      <NotificationBell />
     </header>
   )
 }
