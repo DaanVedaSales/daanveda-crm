@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { KANBAN_STAGES, DEAL_STAGE_LABELS, DEAL_STAGE_COLORS } from '@/lib/constants'
 import { formatCurrency } from '@/lib/utils'
 import type { DealStage } from '@/types/database'
-import { X, Send, Trash2, IndianRupee, Calendar, GripVertical, Plus, ChevronDown, ExternalLink, Building2, Users, Banknote, Tag, AlertCircle, Target, StickyNote, MessageSquare, User, Search } from 'lucide-react'
+import { X, Send, Trash2, Ban, IndianRupee, Calendar, GripVertical, Plus, ChevronDown, ExternalLink, Building2, Users, Banknote, Tag, AlertCircle, Target, StickyNote, MessageSquare, User, Search } from 'lucide-react'
 import DateTimePicker from '@/components/ui/DateTimePicker'
 import OrgSearchInput from '@/components/crm/OrgSearchInput'
 import OrgSearchModal from '@/components/crm/OrgSearchModal'
@@ -352,6 +352,8 @@ function DealPanel({ deal, contacts, currentUserId, onClose, onUpdate, onDelete 
   const [removing,    setRemoving]    = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting,    setDeleting]    = useState(false)
+  const [confirmBan,  setConfirmBan]  = useState(false)
+  const [banning,     setBanning]     = useState(false)
   const [kdmExpanded, setKdmExpanded] = useState(false)
   // KDM edit/add state — Closer can edit contacts and add new ones
   const [contactList, setContactList] = useState<any[]>(contacts)
@@ -518,6 +520,15 @@ function DealPanel({ deal, contacts, currentUserId, onClose, onUpdate, onDelete 
     else setConfirmDelete(false)
   }
 
+  // Request to ban this deal's organisation → sent to admin, deal removed from pipeline.
+  async function handleBanRequest() {
+    setBanning(true)
+    const res = await fetch(`/api/deals/${deal.id}/ban-request`, { method: 'POST' })
+    setBanning(false)
+    if (res.ok) onDelete(deal.id)
+    else setConfirmBan(false)
+  }
+
   const stageColor = DEAL_STAGE_COLORS[deal.stage]
   const demoDateStr = deal.demo?.demo_date
     ? formatIST(deal.demo.demo_date, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true })
@@ -549,6 +560,44 @@ function DealPanel({ deal, contacts, currentUserId, onClose, onUpdate, onDelete 
             </div>
           </div>
           <div className="flex items-center gap-1">
+            <button
+              onClick={() => setConfirmBan(true)}
+              className="p-2 rounded-lg hover:bg-red-50 text-[#94A3B8] hover:text-[#DC2626] transition-colors"
+              title="Request to ban organisation"
+            >
+              <Ban className="w-4 h-4" strokeWidth={1.75} />
+            </button>
+
+            {confirmBan && (
+              <div className="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4" onClick={() => { if (!banning) setConfirmBan(false) }}>
+                <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-5" onClick={e => e.stopPropagation()}>
+                  <div className="flex items-center gap-2">
+                    <Ban className="w-4 h-4 text-[#DC2626]" strokeWidth={2} />
+                    <h3 className="font-semibold text-[#0F172A] text-sm">Request to ban this organisation?</h3>
+                  </div>
+                  <p className="text-xs text-[#64748B] mt-1.5">
+                    {deal.organization?.name} will be sent to admin for ban confirmation and removed from your pipeline.
+                  </p>
+                  <div className="flex flex-col gap-2 mt-4">
+                    <button
+                      onClick={handleBanRequest}
+                      disabled={banning}
+                      className="w-full py-2 bg-[#DC2626] text-white text-xs font-semibold rounded-lg hover:bg-[#B91C1C] disabled:opacity-60"
+                    >
+                      {banning ? 'Sending…' : 'Request ban'}
+                    </button>
+                    <button
+                      onClick={() => setConfirmBan(false)}
+                      disabled={banning}
+                      className="w-full py-2 text-xs text-[#64748B] rounded-lg hover:bg-[#F8FAFC] disabled:opacity-60"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <button
               onClick={() => setConfirmDelete(true)}
               className="p-2 rounded-lg hover:bg-red-50 text-[#94A3B8] hover:text-[#EF4444] transition-colors"

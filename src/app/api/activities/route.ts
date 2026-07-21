@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { CHANNEL_TO_ACTIVITY_TYPE, NOT_INTERESTED_OUTCOMES, BANNED_OUTCOME, FOLLOWUP_OUTCOME } from '@/lib/constants'
+import { notifyRole } from '@/lib/notifications'
 
 // POST /api/activities — log an activity
 export async function POST(req: NextRequest) {
@@ -72,6 +73,19 @@ export async function POST(req: NextRequest) {
   }
 
   await supabase.from('leads').update(leadUpdate).eq('id', lead_id)
+
+  // On a ban request, notify admins to confirm (best-effort — never blocks the log).
+  if (outcome === BANNED_OUTCOME) {
+    const { data: orgRow } = await supabase.from('organizations').select('name').eq('id', lead.org_id).single()
+    const { data: meRow } = await supabase.from('users').select('name').eq('id', profile.id).single()
+    await notifyRole('admin', {
+      actorId: profile.id,
+      type: 'ban_requested',
+      title: 'Ban requested',
+      body: `${meRow?.name ?? 'An SDR'} requested to ban ${orgRow?.name ?? 'an organisation'}. Review in the Returned tab.`,
+      link: '/admin/leads',
+    })
+  }
 
   return NextResponse.json(activity, { status: 201 })
 }

@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Bell, CalendarPlus, CalendarX, CalendarClock, ArrowRightLeft,
-  RotateCcw, UserPlus, ClipboardCheck, Trophy, Check,
+  RotateCcw, UserPlus, ClipboardCheck, Trophy, Check, Ban,
 } from 'lucide-react'
 import { IST_TIMEZONE } from '@/lib/utils'
 
@@ -27,6 +27,7 @@ const TYPE_ICON: Record<string, typeof Bell> = {
   lead_assigned: UserPlus,
   request_decision: ClipboardCheck,
   deal_won: Trophy,
+  ban_requested: Ban,
 }
 
 const POLL_MS = 60_000
